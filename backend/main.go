@@ -31,6 +31,7 @@ func main() {
 	uploadHandler := handlers.NewUploadHandler(cfg, store, storageStore)
 	sheetHandler := handlers.NewSheetHandler(store, storageStore)
 	filesHandler := handlers.NewFilesHandler(store, storageStore)
+	domainsHandler := handlers.NewDomainsHandler(cfg, storageStore)
 
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
@@ -76,6 +77,9 @@ func main() {
 		r.Post("/files/{id}/email/test", filesHandler.SendTestEmail)
 		r.Patch("/files/{id}", filesHandler.Rename)
 		r.Delete("/files/{id}", filesHandler.Delete)
+		r.Get("/domains", domainsHandler.List)
+		r.Post("/domains/check", domainsHandler.Check)
+		r.Post("/domains", domainsHandler.Create)
 	})
 
 	server := &http.Server{

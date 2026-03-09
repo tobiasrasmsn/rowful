@@ -25,6 +25,7 @@ export function FileTabsBar() {
   const [nextName, setNextName] = useState("")
 
   const isFilesPage = location.pathname.startsWith("/files")
+  const isDomainsPage = location.pathname.startsWith("/domains")
   const currentFileName = workbook
     ? getDisplayFileName(workbook.fileName)
     : "No file selected"
@@ -59,13 +60,22 @@ export function FileTabsBar() {
           </div>
         ) : null}
 
-        <Button
-          variant={isFilesPage ? "secondary" : "outline"}
-          size="sm"
-          onClick={() => navigate("/files")}
-        >
-          Browse Files
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={isDomainsPage ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => navigate("/domains")}
+          >
+            Domains
+          </Button>
+          <Button
+            variant={isFilesPage ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => navigate("/files")}
+          >
+            Browse Files
+          </Button>
+        </div>
       </div>
 
       <div className="h-0.5 w-full bg-transparent">

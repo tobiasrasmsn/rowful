@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner"
 
 import { CellInspector } from "@/components/CellInspector"
+import { DomainsPage } from "@/components/DomainsPage"
 import { FileTabsBar } from "@/components/FileTabsBar"
 import { FilesBrowser } from "@/components/FilesBrowser"
 import { FormatBar } from "@/components/FormatBar"
@@ -100,6 +101,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<RootRedirect />} />
           <Route path="/files" element={<FilesBrowser />} />
+          <Route path="/domains" element={<DomainsPage />} />
           <Route path="/sheet/:id" element={<SheetRoutePage />} />
           <Route path="*" element={<Navigate to="/files" replace />} />
         </Routes>

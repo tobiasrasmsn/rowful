@@ -9,8 +9,13 @@ import type {
   SheetResponse,
   UploadResponse,
 } from "@/types/sheet"
+import type {
+  DomainCheckResponse,
+  ManagedDomainResponse,
+  ManagedDomainsResponse,
+} from "@/types/domain"
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080"
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "")
 
 async function parseJson<T>(response: Response): Promise<T> {
   const payload = await response.json()
@@ -414,4 +419,31 @@ export async function sendFileTestEmail(
     body: JSON.stringify(payload),
   })
   return parseJson<{ status: string }>(response)
+}
+
+export async function listManagedDomains(): Promise<ManagedDomainsResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/domains`)
+  return parseJson<ManagedDomainsResponse>(response)
+}
+
+export async function checkManagedDomain(
+  domain: string
+): Promise<DomainCheckResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/domains/check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ domain }),
+  })
+  return parseJson<DomainCheckResponse>(response)
+}
+
+export async function createManagedDomain(
+  domain: string
+): Promise<ManagedDomainResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/domains`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ domain }),
+  })
+  return parseJson<ManagedDomainResponse>(response)
 }

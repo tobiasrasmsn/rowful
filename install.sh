@@ -103,8 +103,9 @@ configure_docker_permissions() {
 maybe_open_firewall() {
   if has_cmd ufw; then
     if $SUDO ufw status | grep -q "Status: active"; then
-      log "Opening firewall ports 80/tcp and 8080/tcp via ufw..."
+      log "Opening firewall ports 80/tcp, 443/tcp, and 8080/tcp via ufw..."
       $SUDO ufw allow 80/tcp >/dev/null || true
+      $SUDO ufw allow 443/tcp >/dev/null || true
       $SUDO ufw allow 8080/tcp >/dev/null || true
     fi
   fi
@@ -132,6 +133,15 @@ prepare_runtime_data_dir() {
   # Backend container runs as uid/gid 65532 (distroless nonroot).
   $SUDO chown -R 65532:65532 "${data_dir}"
   $SUDO chmod -R u+rwX "${data_dir}"
+}
+
+prepare_caddy_dirs() {
+  local caddy_dir="${INSTALL_DIR}/caddy"
+  log "Preparing Caddy runtime directories at ${caddy_dir}..."
+  $SUDO mkdir -p "${caddy_dir}/sites" "${caddy_dir}/data" "${caddy_dir}/config"
+  $SUDO touch "${caddy_dir}/sites/planar-domains.caddy"
+  $SUDO chown -R 65532:65532 "${caddy_dir}"
+  $SUDO chmod -R u+rwX "${caddy_dir}"
 }
 
 log "Installing base packages..."
@@ -165,6 +175,7 @@ ensure_compose
 configure_docker_permissions
 maybe_open_firewall
 prepare_runtime_data_dir
+prepare_caddy_dirs
 
 PUBLIC_IP="$(get_public_ip)"
 if [[ -z "$PUBLIC_IP" ]]; then
@@ -172,31 +183,40 @@ if [[ -z "$PUBLIC_IP" ]]; then
   PUBLIC_IP="localhost"
 fi
 
-FRONTEND_PORT="${FRONTEND_PORT:-80}"
+HTTP_PORT="${HTTP_PORT:-80}"
+HTTPS_PORT="${HTTPS_PORT:-443}"
 BACKEND_PORT="${BACKEND_PORT:-8080}"
-FRONTEND_ORIGIN="http://${PUBLIC_IP}"
-if [[ "$FRONTEND_PORT" != "80" ]]; then
-  FRONTEND_ORIGIN="${FRONTEND_ORIGIN}:${FRONTEND_PORT}"
+APP_ORIGIN="http://${PUBLIC_IP}"
+if [[ "$HTTP_PORT" != "80" ]]; then
+  APP_ORIGIN="${APP_ORIGIN}:${HTTP_PORT}"
 fi
 
 if [[ ! -f .env ]]; then
   cat > .env <<ENVEOF
-FRONTEND_PORT=${FRONTEND_PORT}
+HTTP_PORT=${HTTP_PORT}
+HTTPS_PORT=${HTTPS_PORT}
 BACKEND_PORT=${BACKEND_PORT}
-VITE_API_BASE_URL=http://${PUBLIC_IP}:${BACKEND_PORT}
-ALLOWED_ORIGINS=${FRONTEND_ORIGIN},http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173
+DEFAULT_SITE_ADDR=:80
+VITE_API_BASE_URL=
+PUBLIC_IPS=${PUBLIC_IP}
+ALLOWED_ORIGINS=${APP_ORIGIN},http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173
 MAX_FILE_SIZE_MB=25
 DB_PATH=/data/planar.db
 UPLOAD_DIR=/data/uploads
+CADDY_ADMIN_URL=http://caddy:2019
 ENVEOF
 else
-  set_env_var "FRONTEND_PORT" "${FRONTEND_PORT}"
+  set_env_var "HTTP_PORT" "${HTTP_PORT}"
+  set_env_var "HTTPS_PORT" "${HTTPS_PORT}"
   set_env_var "BACKEND_PORT" "${BACKEND_PORT}"
-  set_env_var "VITE_API_BASE_URL" "http://${PUBLIC_IP}:${BACKEND_PORT}"
-  set_env_var "ALLOWED_ORIGINS" "${FRONTEND_ORIGIN},http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173"
+  set_env_var "DEFAULT_SITE_ADDR" ":80"
+  set_env_var "VITE_API_BASE_URL" ""
+  set_env_var "PUBLIC_IPS" "${PUBLIC_IP}"
+  set_env_var "ALLOWED_ORIGINS" "${APP_ORIGIN},http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173"
   set_env_var "MAX_FILE_SIZE_MB" "25"
   set_env_var "DB_PATH" "/data/planar.db"
   set_env_var "UPLOAD_DIR" "/data/uploads"
+  set_env_var "CADDY_ADMIN_URL" "http://caddy:2019"
 fi
 
 log "Building and starting containers..."
@@ -213,9 +233,10 @@ fi
 
 echo
 log "Install complete."
-echo "Frontend URL: http://${PUBLIC_IP}:${FRONTEND_PORT}"
+echo "App URL:      http://${PUBLIC_IP}:${HTTP_PORT}"
 echo "Backend API:  http://${PUBLIC_IP}:${BACKEND_PORT}"
 echo "Healthcheck:  http://${PUBLIC_IP}:${BACKEND_PORT}/health"
+echo "HTTPS URL:    https://<your-domain> (after DNS + Caddy setup in the app)"
 echo
 
 echo "Project directory: ${INSTALL_DIR}"

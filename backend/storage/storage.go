@@ -109,6 +109,11 @@ CREATE TABLE IF NOT EXISTS file_settings (
   smtp_use_tls INTEGER NOT NULL DEFAULT 1,
   FOREIGN KEY (workbook_id) REFERENCES workbooks(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS managed_domains (
+  domain TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL
+);
 `
 
 	if _, err := s.db.Exec(schema); err != nil {
@@ -148,6 +153,9 @@ CREATE TABLE IF NOT EXISTS file_settings (
 	}
 	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_file_settings_workbook_id ON file_settings(workbook_id);`); err != nil {
 		return fmt.Errorf("create index on file_settings.workbook_id: %w", err)
+	}
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_managed_domains_created_at ON managed_domains(created_at);`); err != nil {
+		return fmt.Errorf("create index on managed_domains.created_at: %w", err)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -890,6 +898,61 @@ ON CONFLICT(workbook_id) DO UPDATE SET
 		return models.FileSettings{}, fmt.Errorf("commit tx: %w", err)
 	}
 	return normalized, nil
+}
+
+func (s *Store) ListManagedDomains() ([]models.ManagedDomain, error) {
+	rows, err := s.db.Query(`
+SELECT domain, created_at
+FROM managed_domains
+ORDER BY domain ASC
+`)
+	if err != nil {
+		return nil, fmt.Errorf("query managed domains: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	domains := make([]models.ManagedDomain, 0)
+	for rows.Next() {
+		var domain models.ManagedDomain
+		var createdAt string
+		if err := rows.Scan(&domain.Domain, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan managed domain: %w", err)
+		}
+		domain.CreatedAt = parseTimeOrNow(createdAt)
+		domains = append(domains, domain)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate managed domains: %w", err)
+	}
+	return domains, nil
+}
+
+func (s *Store) UpsertManagedDomain(domain string) (models.ManagedDomain, error) {
+	normalized := strings.TrimSpace(strings.ToLower(domain))
+	if normalized == "" {
+		return models.ManagedDomain{}, ErrInvalid
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := s.db.Exec(`
+INSERT INTO managed_domains(domain, created_at)
+VALUES(?, ?)
+ON CONFLICT(domain) DO NOTHING
+`, normalized, now); err != nil {
+		return models.ManagedDomain{}, fmt.Errorf("upsert managed domain: %w", err)
+	}
+
+	var managed models.ManagedDomain
+	var createdAt string
+	if err := s.db.QueryRow(`
+SELECT domain, created_at
+FROM managed_domains
+WHERE domain = ?
+`, normalized).Scan(&managed.Domain, &createdAt); err != nil {
+		return models.ManagedDomain{}, fmt.Errorf("load managed domain: %w", err)
+	}
+	managed.CreatedAt = parseTimeOrNow(createdAt)
+	return managed, nil
 }
 
 func (s *Store) workbookExists(workbookID string) (bool, error) {

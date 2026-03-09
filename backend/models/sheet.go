@@ -129,3 +129,34 @@ type FilesResponse struct {
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
+
+type ManagedDomain struct {
+	Domain    string    `json:"domain"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type DomainDNSRecord struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+}
+
+type DomainCheckResult struct {
+	Domain          string            `json:"domain"`
+	ExpectedIPs     []string          `json:"expectedIps"`
+	ResolvedRecords []DomainDNSRecord `json:"resolvedRecords"`
+	MatchingRecords []DomainDNSRecord `json:"matchingRecords"`
+	DNSConfigured   bool              `json:"dnsConfigured"`
+}
+
+type ManagedDomainsResponse struct {
+	Domains []ManagedDomain `json:"domains"`
+}
+
+type DomainCheckResponse struct {
+	Check DomainCheckResult `json:"check"`
+}
+
+type ManagedDomainResponse struct {
+	Domain ManagedDomain     `json:"domain"`
+	Check  DomainCheckResult `json:"check"`
+}

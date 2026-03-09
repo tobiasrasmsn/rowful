@@ -13,6 +13,10 @@ type Config struct {
 	AllowedOrigins   []string
 	DatabasePath     string
 	UploadDir        string
+	PublicIPs        []string
+	CaddyAdminURL    string
+	CaddyConfigPath  string
+	CaddySitesPath   string
 	ReadTimeout      time.Duration
 	WriteTimeout     time.Duration
 	IdleTimeout      time.Duration
@@ -29,6 +33,10 @@ func Load() Config {
 		AllowedOrigins:   allowedOrigins,
 		DatabasePath:     getEnv("DB_PATH", "./planar.db"),
 		UploadDir:        getEnv("UPLOAD_DIR", "./uploads"),
+		PublicIPs:        loadPublicIPs(),
+		CaddyAdminURL:    getEnv("CADDY_ADMIN_URL", "http://caddy:2019"),
+		CaddyConfigPath:  getEnv("CADDY_CONFIG_PATH", "/etc/caddy/Caddyfile"),
+		CaddySitesPath:   getEnv("CADDY_SITES_PATH", "/etc/caddy/sites"),
 		ReadTimeout:      getEnvDuration("READ_TIMEOUT", 30*time.Second),
 		WriteTimeout:     getEnvDuration("WRITE_TIMEOUT", 30*time.Second),
 		IdleTimeout:      getEnvDuration("IDLE_TIMEOUT", 60*time.Second),
@@ -80,4 +88,27 @@ func splitCSV(value string) []string {
 		return []string{"http://localhost:5173", "http://127.0.0.1:5173"}
 	}
 	return origins
+}
+
+func loadPublicIPs() []string {
+	if ips := splitOptionalCSV(os.Getenv("PUBLIC_IPS")); len(ips) > 0 {
+		return ips
+	}
+	ip := strings.TrimSpace(os.Getenv("PUBLIC_IP"))
+	if ip == "" {
+		return nil
+	}
+	return []string{ip}
+}
+
+func splitOptionalCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	items := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			items = append(items, trimmed)
+		}
+	}
+	return items
 }

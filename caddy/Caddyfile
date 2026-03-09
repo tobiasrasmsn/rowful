@@ -1,0 +1,21 @@
+{
+	admin {$CADDY_ADMIN_ADDR:0.0.0.0:2019}
+}
+
+(common_site) {
+	encode gzip zstd
+
+	handle /api/* {
+		reverse_proxy {$BACKEND_UPSTREAM:backend:8080}
+	}
+
+	handle {
+		reverse_proxy {$FRONTEND_UPSTREAM:frontend:80}
+	}
+}
+
+{$DEFAULT_SITE_ADDR} {
+	import common_site
+}
+
+import /etc/caddy/sites/*.caddy
