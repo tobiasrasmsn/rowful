@@ -125,6 +125,15 @@ wait_for_backend() {
   return 1
 }
 
+prepare_runtime_data_dir() {
+  local data_dir="${INSTALL_DIR}/data"
+  log "Preparing runtime data directory at ${data_dir}..."
+  $SUDO mkdir -p "${data_dir}/uploads"
+  # Backend container runs as uid/gid 65532 (distroless nonroot).
+  $SUDO chown -R 65532:65532 "${data_dir}"
+  $SUDO chmod -R u+rwX "${data_dir}"
+}
+
 log "Installing base packages..."
 $SUDO apt-get update -y
 $SUDO apt-get install -y curl git ca-certificates
@@ -155,6 +164,7 @@ install_docker
 ensure_compose
 configure_docker_permissions
 maybe_open_firewall
+prepare_runtime_data_dir
 
 PUBLIC_IP="$(get_public_ip)"
 if [[ -z "$PUBLIC_IP" ]]; then
@@ -194,7 +204,7 @@ $SUDO docker compose down >/dev/null 2>&1 || true
 $SUDO docker compose up -d --build
 
 log "Waiting for backend health check..."
-if ! wait_for_backend "http://${PUBLIC_IP}:${BACKEND_PORT}"; then
+if ! wait_for_backend "http://127.0.0.1:${BACKEND_PORT}"; then
   echo
   echo "Install finished, but backend health check did not pass yet."
   echo "Inspect with: sudo docker compose -f ${INSTALL_DIR}/docker-compose.yml logs --tail=200"
