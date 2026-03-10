@@ -114,7 +114,13 @@
 .sheet-grid revogr-header,
 .sheet-grid .rgCell,
 .sheet-grid .rgHeaderCell {
-  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-family: var(
+    --planar-grid-font-family,
+    Calibri,
+    "Segoe UI",
+    Arial,
+    sans-serif
+  );
 }
 
 .sheet-grid {

@@ -85,8 +85,37 @@ type deleteAxisRequest struct {
 	Count int    `json:"count"`
 }
 
+type saveKanbanRegionsRequest struct {
+	KanbanRegions []models.KanbanRegion `json:"kanbanRegions"`
+}
+
 func NewSheetHandler(cacheStore *cache.Store, storageStore *storage.Store) SheetHandler {
 	return SheetHandler{cache: cacheStore, storage: storageStore}
+}
+
+func (h SheetHandler) saveKanbanRegions(w http.ResponseWriter, workbookID string, regions []models.KanbanRegion) {
+	saved, err := h.storage.SaveKanbanRegions(workbookID, regions)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to save kanban regions"})
+		return
+	}
+	writeJSON(w, http.StatusOK, models.KanbanRegionsResponse{KanbanRegions: saved})
+}
+
+func (h SheetHandler) sheetResponse(workbook models.Workbook, sheet models.Sheet) (models.SheetResponse, error) {
+	regions, err := h.storage.GetKanbanRegions(workbook.ID)
+	if err != nil {
+		return models.SheetResponse{}, err
+	}
+	return models.SheetResponse{
+		Workbook:      workbook,
+		Sheet:         sheet,
+		KanbanRegions: regions,
+	}, nil
 }
 
 func (h SheetHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -121,7 +150,12 @@ func (h SheetHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, models.SheetResponse{Workbook: workbook, Sheet: sheet})
+	response, err := h.sheetResponse(workbook, sheet)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h SheetHandler) UpdateCell(w http.ResponseWriter, r *http.Request) {
@@ -164,7 +198,12 @@ func (h SheetHandler) UpdateCell(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load updated cell"})
 		return
 	}
-	writeJSON(w, http.StatusOK, models.SheetResponse{Workbook: workbook, Sheet: sheet})
+	response, err := h.sheetResponse(workbook, sheet)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h SheetHandler) ApplyStyle(w http.ResponseWriter, r *http.Request) {
@@ -248,6 +287,26 @@ func (h SheetHandler) ClearValues(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (h SheetHandler) SaveKanbanRegions(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing workbook id"})
+		return
+	}
+	if _, _, ok := h.loadWorkbook(r, id); !ok {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
+		return
+	}
+
+	var req saveKanbanRegionsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid JSON body"})
+		return
+	}
+
+	h.saveKanbanRegions(w, id, req.KanbanRegions)
+}
+
 func (h SheetHandler) SaveSheet(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -284,7 +343,12 @@ func (h SheetHandler) SaveSheet(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load saved sheet"})
 		return
 	}
-	writeJSON(w, http.StatusOK, models.SheetResponse{Workbook: workbook, Sheet: sheet})
+	response, err := h.sheetResponse(workbook, sheet)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h SheetHandler) CreateSheet(w http.ResponseWriter, r *http.Request) {
@@ -324,7 +388,12 @@ func (h SheetHandler) CreateSheet(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load created sheet"})
 		return
 	}
-	writeJSON(w, http.StatusOK, models.SheetResponse{Workbook: workbook, Sheet: sheet})
+	response, err := h.sheetResponse(workbook, sheet)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h SheetHandler) RenameSheet(w http.ResponseWriter, r *http.Request) {
@@ -365,7 +434,12 @@ func (h SheetHandler) RenameSheet(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load renamed sheet"})
 		return
 	}
-	writeJSON(w, http.StatusOK, models.SheetResponse{Workbook: workbook, Sheet: sheet})
+	response, err := h.sheetResponse(workbook, sheet)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h SheetHandler) DeleteSheet(w http.ResponseWriter, r *http.Request) {
@@ -412,7 +486,12 @@ func (h SheetHandler) DeleteSheet(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load active sheet"})
 		return
 	}
-	writeJSON(w, http.StatusOK, models.SheetResponse{Workbook: workbook, Sheet: sheet})
+	response, err := h.sheetResponse(workbook, sheet)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h SheetHandler) ResizeSheet(w http.ResponseWriter, r *http.Request) {
@@ -465,7 +544,12 @@ func (h SheetHandler) ResizeSheet(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load resized sheet"})
 		return
 	}
-	writeJSON(w, http.StatusOK, models.SheetResponse{Workbook: workbook, Sheet: sheet})
+	response, err := h.sheetResponse(workbook, sheet)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h SheetHandler) DeleteRows(w http.ResponseWriter, r *http.Request) {
@@ -503,7 +587,12 @@ func (h SheetHandler) DeleteRows(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load updated sheet"})
 		return
 	}
-	writeJSON(w, http.StatusOK, models.SheetResponse{Workbook: workbook, Sheet: sheet})
+	response, err := h.sheetResponse(workbook, sheet)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h SheetHandler) InsertRows(w http.ResponseWriter, r *http.Request) {
@@ -541,7 +630,12 @@ func (h SheetHandler) InsertRows(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load updated sheet"})
 		return
 	}
-	writeJSON(w, http.StatusOK, models.SheetResponse{Workbook: workbook, Sheet: sheet})
+	response, err := h.sheetResponse(workbook, sheet)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h SheetHandler) DeleteCols(w http.ResponseWriter, r *http.Request) {
@@ -579,7 +673,12 @@ func (h SheetHandler) DeleteCols(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load updated sheet"})
 		return
 	}
-	writeJSON(w, http.StatusOK, models.SheetResponse{Workbook: workbook, Sheet: sheet})
+	response, err := h.sheetResponse(workbook, sheet)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h SheetHandler) InsertCols(w http.ResponseWriter, r *http.Request) {
@@ -617,7 +716,12 @@ func (h SheetHandler) InsertCols(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load updated sheet"})
 		return
 	}
-	writeJSON(w, http.StatusOK, models.SheetResponse{Workbook: workbook, Sheet: sheet})
+	response, err := h.sheetResponse(workbook, sheet)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h SheetHandler) loadWorkbook(r *http.Request, id string) (models.Workbook, map[string]models.Sheet, bool) {

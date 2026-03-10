@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 
+import { cn } from "@/lib/utils"
 import { useSheetStore } from "@/store/sheetStore"
 import { Button } from "./ui/button"
 import {
@@ -12,9 +14,15 @@ import {
 } from "./ui/dialog"
 import { Input } from "./ui/input"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs"
-import { KanbanSquareIcon } from "lucide-react"
+import { KanbanSquareIcon, PlusSquareIcon } from "lucide-react"
 
-export function SheetTabs() {
+type SheetTabsProps = {
+  className?: string
+  compact?: boolean
+}
+
+export function SheetTabs({ className, compact = false }: SheetTabsProps) {
+  const [searchParams, setSearchParams] = useSearchParams()
   const workbook = useSheetStore((state) => state.workbook)
   const selectedSheetName = useSheetStore((state) => state.selectedSheetName)
   const activeWorkspaceTab = useSheetStore((state) => state.activeWorkspaceTab)
@@ -30,6 +38,62 @@ export function SheetTabs() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingSheetName, setEditingSheetName] = useState("")
   const [nextSheetName, setNextSheetName] = useState("")
+  const tabsScrollRef = useRef<HTMLDivElement | null>(null)
+  const [showFadeStart, setShowFadeStart] = useState(false)
+  const [showFadeEnd, setShowFadeEnd] = useState(false)
+
+  const slugify = useCallback(
+    (value: string) =>
+      value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, ""),
+    []
+  )
+
+  const updateFades = useCallback(() => {
+    const node = tabsScrollRef.current
+    if (!node) {
+      setShowFadeStart(false)
+      setShowFadeEnd(false)
+      return
+    }
+
+    const hasOverflow = node.scrollWidth - node.clientWidth > 1
+    if (!hasOverflow) {
+      setShowFadeStart(false)
+      setShowFadeEnd(false)
+      return
+    }
+
+    const maxScrollLeft = node.scrollWidth - node.clientWidth
+    setShowFadeStart(node.scrollLeft > 1)
+    setShowFadeEnd(node.scrollLeft < maxScrollLeft - 1)
+  }, [])
+
+  useEffect(() => {
+    const node = tabsScrollRef.current
+    if (!node) {
+      return
+    }
+
+    const frame = window.requestAnimationFrame(updateFades)
+    node.addEventListener("scroll", updateFades, { passive: true })
+    window.addEventListener("resize", updateFades)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      node.removeEventListener("scroll", updateFades)
+      window.removeEventListener("resize", updateFades)
+    }
+  }, [
+    updateFades,
+    workbook,
+    kanbanRegions,
+    selectedSheetName,
+    activeWorkspaceTab,
+  ])
   const kanbanBySheet = useMemo(() => {
     const grouped = new Map<string, typeof kanbanRegions>()
     for (const region of kanbanRegions) {
@@ -57,52 +121,95 @@ export function SheetTabs() {
   }
 
   return (
-    <div className="px-6 pt-1.5 pb-px">
+    <div
+      className={cn(
+        compact
+          ? "w-full min-w-0 px-0 pt-0 pb-0"
+          : "w-full min-w-0 px-6 pt-1.5 pb-px",
+        className
+      )}
+    >
       <Tabs
         value={activeWorkspaceTab || selectedSheetName}
         onValueChange={(value) => {
+          const next = new URLSearchParams(searchParams)
           if (value.startsWith("kanban:")) {
+            const regionId = value.slice("kanban:".length)
+            const region = kanbanRegions.find((item) => item.id === regionId)
+            if (region) {
+              const slug = slugify(region.name) || "kanban"
+              next.set("kanban", `${region.id}/${slug}`)
+            } else {
+              next.set("kanban", regionId)
+            }
+            setSearchParams(next, { replace: true })
             setActiveWorkspaceTab(value)
+            return
+          }
+          next.delete("kanban")
+          setSearchParams(next, { replace: true })
+          setActiveWorkspaceTab(value)
+          if (value === selectedSheetName) {
             return
           }
           void loadSheet(value)
         }}
       >
-        <TabsList className="gap-1 bg-transparent">
-          {(workbook?.sheets ?? []).map((sheetMeta) => (
-            <div key={sheetMeta.name} className="contents">
-              <TabsTrigger
-                className="rounded-t-xl rounded-b-none border border-b-0 border-border bg-muted/35 px-8 py-4 shadow-none! data-active:-mb-px data-active:bg-card"
-                value={sheetMeta.name}
-                onDoubleClick={() => openEditDialog(sheetMeta.name)}
-              >
-                {sheetMeta.name}
-              </TabsTrigger>
-              {(kanbanBySheet.get(sheetMeta.name) ?? []).map((region) =>
-                sheetMeta.name === selectedSheetName ? (
+        <div className="relative w-full min-w-0">
+          <div
+            ref={tabsScrollRef}
+            className="h-12 w-full min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-color:color-mix(in_oklab,var(--border)_75%,transparent)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/70 [&::-webkit-scrollbar-thumb:hover]:bg-border [&::-webkit-scrollbar-track]:bg-transparent"
+          >
+            <TabsList className="h-full! min-h-0 w-max min-w-full flex-nowrap items-end gap-1 bg-transparent p-0 pb-0">
+              {(workbook?.sheets ?? []).map((sheetMeta) => (
+                <div key={sheetMeta.name} className="flex items-end gap-1">
                   <TabsTrigger
-                    className="rounded-t-xl rounded-b-none border border-b-0 border-border bg-muted/35 px-8 py-4 shadow-none! data-active:-mb-px data-active:bg-card"
-                    key={`kanban:${region.id}`}
-                    value={`kanban:${region.id}`}
+                    className="h-full! rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/35 px-5 py-1 text-sm shadow-none! data-active:-mb-px data-active:bg-card"
+                    value={sheetMeta.name}
+                    onDoubleClick={() => openEditDialog(sheetMeta.name)}
                   >
-                    <KanbanSquareIcon /> {region.name}
+                    {sheetMeta.name}
                   </TabsTrigger>
-                ) : null
-              )}
-            </div>
-          ))}
-          {workbook ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 rounded-full border border-border/60 bg-muted/80 px-3 text-base leading-none"
-              onClick={createSheet}
-            >
-              +
-            </Button>
+                  {sheetMeta.name === selectedSheetName &&
+                  (kanbanBySheet.get(sheetMeta.name) ?? []).length > 0 ? (
+                    <div className="mx-1 flex items-end gap-1 border-x border-border/60 px-2">
+                      {(kanbanBySheet.get(sheetMeta.name) ?? []).map(
+                        (region) => (
+                          <TabsTrigger
+                            className="h-full! rounded-t-md rounded-b-none border border-b-0 border-border/70 bg-muted/20 px-3 py-1 text-xs text-muted-foreground shadow-none! data-active:-mb-px data-active:border-border data-active:bg-card data-active:text-foreground"
+                            key={`kanban:${region.id}`}
+                            value={`kanban:${region.id}`}
+                            title={`${sheetMeta.name} · ${region.name}`}
+                          >
+                            <KanbanSquareIcon className="size-3.5" />{" "}
+                            {region.name}
+                          </TabsTrigger>
+                        )
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              {workbook ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 gap-2 rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/35 px-5 py-1 text-sm shadow-none! data-active:-mb-px data-active:bg-card"
+                  onClick={createSheet}
+                >
+                  <PlusSquareIcon /> New Sheet
+                </Button>
+              ) : null}
+            </TabsList>
+          </div>
+          {showFadeStart ? (
+            <div className="pointer-events-none absolute top-0 bottom-0 left-0 w-8 bg-gradient-to-r from-background to-transparent" />
           ) : null}
-        </TabsList>
+          {showFadeEnd ? (
+            <div className="pointer-events-none absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent" />
+          ) : null}
+        </div>
       </Tabs>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

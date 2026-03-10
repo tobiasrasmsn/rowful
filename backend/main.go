@@ -69,6 +69,7 @@ func main() {
 			private.Post("/sheet/{id}/style", sheetHandler.ApplyStyle)
 			private.Post("/sheet/{id}/clear-formatting", sheetHandler.ClearFormatting)
 			private.Post("/sheet/{id}/clear-values", sheetHandler.ClearValues)
+			private.Post("/sheet/{id}/kanban", sheetHandler.SaveKanbanRegions)
 			private.Post("/sheet/{id}/save", sheetHandler.SaveSheet)
 			private.Post("/sheet/{id}/create", sheetHandler.CreateSheet)
 			private.Post("/sheet/{id}/rename", sheetHandler.RenameSheet)

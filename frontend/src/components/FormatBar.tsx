@@ -1,19 +1,20 @@
 import { useEffect, useState } from "react"
-import { toast } from "sonner"
+import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  Bold,
-  Eraser,
-  Italic,
-  MoreHorizontal,
-  Palette,
-  Redo2,
-  Strikethrough,
-  Type,
-  Underline,
-  Undo2,
-  WrapText,
-  Settings2,
-} from "lucide-react"
+  Eraser01Icon,
+  MoreHorizontalIcon,
+  PaintBoardIcon,
+  Redo02Icon,
+  Settings02Icon,
+  TextBoldIcon,
+  TextIcon,
+  TextItalicIcon,
+  TextStrikethroughIcon,
+  TextUnderlineIcon,
+  TextWrapIcon,
+  Undo02Icon,
+} from "@hugeicons/core-free-icons"
+import { toast } from "sonner"
 
 import { useSheetStore } from "@/store/sheetStore"
 import { sendFileTestEmail } from "@/api/client"
@@ -64,7 +65,6 @@ export function FormatBar() {
   const selectedStyle = useSheetStore((state) => state.selectedStyle)
   const fileSettings = useSheetStore((state) => state.fileSettings)
   const currency = fileSettings.currency
-  const selectionMode = useSheetStore((state) => state.selectionMode)
   const historyPast = useSheetStore((state) => state.historyPast)
   const historyFuture = useSheetStore((state) => state.historyFuture)
   const zoom = useSheetStore((state) => state.zoom)
@@ -76,6 +76,8 @@ export function FormatBar() {
   const saveEmailSettings = useSheetStore((state) => state.saveEmailSettings)
   const setNumberFormat = useSheetStore((state) => state.setNumberFormat)
   const setZoom = useSheetStore((state) => state.setZoom)
+  const sheetFontFamily = useSheetStore((state) => state.sheetFontFamily)
+  const setSheetFontFamily = useSheetStore((state) => state.setSheetFontFamily)
   const [emailDraft, setEmailDraft] = useState(fileSettings.email)
   const [testRecipient, setTestRecipient] = useState(
     fileSettings.email.fromEmail
@@ -99,7 +101,7 @@ export function FormatBar() {
         onClick={() => void undo()}
         disabled={historyPast.length === 0}
       >
-        <Undo2 className="size-4" />
+        <HugeiconsIcon icon={Undo02Icon} className="size-4" />
       </Button>
       <Button
         size="icon-sm"
@@ -107,7 +109,7 @@ export function FormatBar() {
         onClick={() => void redo()}
         disabled={historyFuture.length === 0}
       >
-        <Redo2 className="size-4" />
+        <HugeiconsIcon icon={Redo02Icon} className="size-4" />
       </Button>
 
       <Separator orientation="vertical" className="mx-1 h-6" />
@@ -138,6 +140,253 @@ export function FormatBar() {
         <option value="yyyy-mm-dd">Date</option>
         <option value="0.00E+00">Scientific</option>
       </select>
+      <input
+        className="h-7 w-12 rounded-md border border-input bg-background px-1.5 text-center"
+        type="number"
+        min={8}
+        max={72}
+        value={selectedStyle.fontSize || 11}
+        onChange={(event) =>
+          void applyStyle({ fontSize: Number(event.target.value) || 11 })
+        }
+        title="Font size"
+      />
+
+      <Button
+        size="icon-sm"
+        variant={selectedStyle.bold ? "default" : "outline"}
+        onClick={() => void applyStyle({ bold: !selectedStyle.bold })}
+        title="Bold"
+      >
+        <HugeiconsIcon icon={TextBoldIcon} className="size-4" />
+      </Button>
+      <Button
+        size="icon-sm"
+        variant={selectedStyle.italic ? "default" : "outline"}
+        onClick={() => void applyStyle({ italic: !selectedStyle.italic })}
+        title="Italic"
+      >
+        <HugeiconsIcon icon={TextItalicIcon} className="size-4" />
+      </Button>
+      <Button
+        size="icon-sm"
+        variant={selectedStyle.underline ? "default" : "outline"}
+        onClick={() => void applyStyle({ underline: !selectedStyle.underline })}
+        title="Underline"
+      >
+        <HugeiconsIcon icon={TextUnderlineIcon} className="size-4" />
+      </Button>
+      <Button
+        size="icon-sm"
+        variant={selectedStyle.strike ? "default" : "outline"}
+        onClick={() => void applyStyle({ strike: !selectedStyle.strike })}
+        title="Strikethrough"
+      >
+        <HugeiconsIcon icon={TextStrikethroughIcon} className="size-4" />
+      </Button>
+
+      <Separator orientation="vertical" className="mx-1 h-6" />
+
+      <label className="relative inline-flex">
+        <Button size="icon-sm" variant="outline" title="Text color">
+          <HugeiconsIcon icon={TextIcon} className="size-4" />
+          <span
+            className="absolute right-1 bottom-1 size-2 rounded-full border border-border"
+            style={{ backgroundColor: selectedStyle.fontColor || "#000000" }}
+          />
+        </Button>
+        <input
+          className="absolute inset-0 cursor-pointer opacity-0"
+          type="color"
+          value={selectedStyle.fontColor || "#000000"}
+          onChange={(event) =>
+            void applyStyle({ fontColor: event.target.value })
+          }
+          title="Text color"
+        />
+      </label>
+      <label className="relative inline-flex">
+        <Button size="icon-sm" variant="outline" title="Fill color">
+          <HugeiconsIcon icon={PaintBoardIcon} className="size-4" />
+          <span
+            className="absolute right-1 bottom-1 size-2 rounded-full border border-border"
+            style={{ backgroundColor: selectedStyle.fillColor || "#ffffff" }}
+          />
+        </Button>
+        <input
+          className="absolute inset-0 cursor-pointer opacity-0"
+          type="color"
+          value={selectedStyle.fillColor || "#ffffff"}
+          onChange={(event) =>
+            void applyStyle({ fillColor: event.target.value })
+          }
+          title="Fill color"
+        />
+      </label>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="icon-sm" variant="outline" title="More formatting">
+            <HugeiconsIcon icon={MoreHorizontalIcon} className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuLabel>Text Alignment</DropdownMenuLabel>
+          <DropdownMenuItem
+            className={
+              selectedStyle.hAlign === "left" ? "font-semibold" : undefined
+            }
+            onClick={() => void applyStyle({ hAlign: "left" })}
+          >
+            Left
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className={
+              selectedStyle.hAlign === "center" ? "font-semibold" : undefined
+            }
+            onClick={() => void applyStyle({ hAlign: "center" })}
+          >
+            Center
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className={
+              selectedStyle.hAlign === "right" ? "font-semibold" : undefined
+            }
+            onClick={() => void applyStyle({ hAlign: "right" })}
+          >
+            Right
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Vertical</DropdownMenuLabel>
+          <DropdownMenuItem
+            className={
+              selectedStyle.vAlign === "top" ? "font-semibold" : undefined
+            }
+            onClick={() => void applyStyle({ vAlign: "top" })}
+          >
+            Top
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className={
+              selectedStyle.vAlign === "center" ? "font-semibold" : undefined
+            }
+            onClick={() => void applyStyle({ vAlign: "center" })}
+          >
+            Middle
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className={
+              selectedStyle.vAlign === "bottom" ? "font-semibold" : undefined
+            }
+            onClick={() => void applyStyle({ vAlign: "bottom" })}
+          >
+            Bottom
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Borders</DropdownMenuLabel>
+          <DropdownMenuItem
+            className={
+              selectedStyle.border === "none" ? "font-semibold" : undefined
+            }
+            onClick={() => void applyStyle({ border: "none" })}
+          >
+            None
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className={
+              selectedStyle.border === "all" ? "font-semibold" : undefined
+            }
+            onClick={() => void applyStyle({ border: "all" })}
+          >
+            All
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className={
+              selectedStyle.border === "outer" ? "font-semibold" : undefined
+            }
+            onClick={() => void applyStyle({ border: "outer" })}
+          >
+            Outer
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className={
+              selectedStyle.border === "inner" ? "font-semibold" : undefined
+            }
+            onClick={() => void applyStyle({ border: "inner" })}
+          >
+            Inner
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className={
+              selectedStyle.border === "bottom" ? "font-semibold" : undefined
+            }
+            onClick={() => void applyStyle({ border: "bottom" })}
+          >
+            Bottom
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Overflow</DropdownMenuLabel>
+          <DropdownMenuItem
+            className={
+              selectedStyle.overflow === "clip" ? "font-semibold" : undefined
+            }
+            onClick={() => void applyStyle({ overflow: "clip" })}
+          >
+            Clip
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className={
+              selectedStyle.overflow === "wrap" ? "font-semibold" : undefined
+            }
+            onClick={() => void applyStyle({ overflow: "wrap" })}
+          >
+            Wrap
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className={
+              selectedStyle.overflow === "overflow"
+                ? "font-semibold"
+                : undefined
+            }
+            onClick={() => void applyStyle({ overflow: "overflow" })}
+          >
+            Overflow
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className={selectedStyle.wrapText ? "font-semibold" : undefined}
+            onClick={() =>
+              void applyStyle({ wrapText: !selectedStyle.wrapText })
+            }
+          >
+            <HugeiconsIcon icon={TextWrapIcon} className="mr-2 size-4" />
+            {selectedStyle.wrapText ? "Disable Wrap Text" : "Enable Wrap Text"}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Button
+        size="icon-sm"
+        variant={selectedStyle.wrapText ? "default" : "outline"}
+        onClick={() => void applyStyle({ wrapText: !selectedStyle.wrapText })}
+        title="Wrap text"
+      >
+        <HugeiconsIcon icon={TextWrapIcon} className="size-4" />
+      </Button>
+
+      <Button
+        size="icon-sm"
+        variant="outline"
+        onClick={() => void clearFormatting()}
+        title="Clear formatting"
+      >
+        <HugeiconsIcon icon={Eraser01Icon} className="size-4" />
+      </Button>
+
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogTrigger asChild>
           <Button
@@ -145,8 +394,9 @@ export function FormatBar() {
             variant="outline"
             disabled={!workbook}
             title="File settings"
+            className="ml-auto"
           >
-            <Settings2 className="size-4" />
+            <HugeiconsIcon icon={Settings02Icon} className="size-4" />
             Settings
           </Button>
         </DialogTrigger>
@@ -204,6 +454,32 @@ export function FormatBar() {
                   </select>
                   <p className="text-xs text-muted-foreground">
                     Forced for all currency formatted cells in this file.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <label
+                    className="text-xs text-muted-foreground"
+                    htmlFor="grid-font-family-select"
+                  >
+                    Grid font
+                  </label>
+                  <select
+                    id="grid-font-family-select"
+                    className="h-9 w-full rounded-md border border-input bg-background px-2"
+                    value={sheetFontFamily}
+                    onChange={(event) =>
+                      setSheetFontFamily(event.target.value)
+                    }
+                    disabled={!workbook}
+                  >
+                    {FONT_OPTIONS.map((font) => (
+                      <option key={font} value={font}>
+                        {font}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Forced visually for all cells in this sheet.
                   </p>
                 </div>
               </TabsContent>
@@ -427,276 +703,6 @@ export function FormatBar() {
           <DialogFooter showCloseButton />
         </DialogContent>
       </Dialog>
-
-      <select
-        className="h-7 w-30 rounded-md border border-input bg-background px-1.5"
-        value={selectedStyle.fontFamily || "Calibri"}
-        onChange={(event) =>
-          void applyStyle({ fontFamily: event.target.value })
-        }
-        title="Font family"
-      >
-        {FONT_OPTIONS.map((font) => (
-          <option key={font} value={font}>
-            {font}
-          </option>
-        ))}
-      </select>
-
-      <input
-        className="h-7 w-12 rounded-md border border-input bg-background px-1.5 text-center"
-        type="number"
-        min={8}
-        max={72}
-        value={selectedStyle.fontSize || 11}
-        onChange={(event) =>
-          void applyStyle({ fontSize: Number(event.target.value) || 11 })
-        }
-        title="Font size"
-      />
-
-      <Button
-        size="icon-sm"
-        variant={selectedStyle.bold ? "default" : "outline"}
-        onClick={() => void applyStyle({ bold: !selectedStyle.bold })}
-        title="Bold"
-      >
-        <Bold className="size-4" />
-      </Button>
-      <Button
-        size="icon-sm"
-        variant={selectedStyle.italic ? "default" : "outline"}
-        onClick={() => void applyStyle({ italic: !selectedStyle.italic })}
-        title="Italic"
-      >
-        <Italic className="size-4" />
-      </Button>
-      <Button
-        size="icon-sm"
-        variant={selectedStyle.underline ? "default" : "outline"}
-        onClick={() => void applyStyle({ underline: !selectedStyle.underline })}
-        title="Underline"
-      >
-        <Underline className="size-4" />
-      </Button>
-      <Button
-        size="icon-sm"
-        variant={selectedStyle.strike ? "default" : "outline"}
-        onClick={() => void applyStyle({ strike: !selectedStyle.strike })}
-        title="Strikethrough"
-      >
-        <Strikethrough className="size-4" />
-      </Button>
-
-      <Separator orientation="vertical" className="mx-1 h-6" />
-
-      <label className="relative inline-flex">
-        <Button size="icon-sm" variant="outline" title="Text color">
-          <Type className="size-4" />
-          <span
-            className="absolute right-1 bottom-1 size-2 rounded-full border border-border"
-            style={{ backgroundColor: selectedStyle.fontColor || "#000000" }}
-          />
-        </Button>
-        <input
-          className="absolute inset-0 cursor-pointer opacity-0"
-          type="color"
-          value={selectedStyle.fontColor || "#000000"}
-          onChange={(event) =>
-            void applyStyle({ fontColor: event.target.value })
-          }
-          title="Text color"
-        />
-      </label>
-      <label className="relative inline-flex">
-        <Button size="icon-sm" variant="outline" title="Fill color">
-          <Palette className="size-4" />
-          <span
-            className="absolute right-1 bottom-1 size-2 rounded-full border border-border"
-            style={{ backgroundColor: selectedStyle.fillColor || "#ffffff" }}
-          />
-        </Button>
-        <input
-          className="absolute inset-0 cursor-pointer opacity-0"
-          type="color"
-          value={selectedStyle.fillColor || "#ffffff"}
-          onChange={(event) =>
-            void applyStyle({ fillColor: event.target.value })
-          }
-          title="Fill color"
-        />
-      </label>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button size="icon-sm" variant="outline" title="More formatting">
-            <MoreHorizontal className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuLabel>Text Alignment</DropdownMenuLabel>
-          <DropdownMenuItem
-            className={
-              selectedStyle.hAlign === "left" ? "font-semibold" : undefined
-            }
-            onClick={() => void applyStyle({ hAlign: "left" })}
-          >
-            Left
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={
-              selectedStyle.hAlign === "center" ? "font-semibold" : undefined
-            }
-            onClick={() => void applyStyle({ hAlign: "center" })}
-          >
-            Center
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={
-              selectedStyle.hAlign === "right" ? "font-semibold" : undefined
-            }
-            onClick={() => void applyStyle({ hAlign: "right" })}
-          >
-            Right
-          </DropdownMenuItem>
-
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>Vertical</DropdownMenuLabel>
-          <DropdownMenuItem
-            className={
-              selectedStyle.vAlign === "top" ? "font-semibold" : undefined
-            }
-            onClick={() => void applyStyle({ vAlign: "top" })}
-          >
-            Top
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={
-              selectedStyle.vAlign === "center" ? "font-semibold" : undefined
-            }
-            onClick={() => void applyStyle({ vAlign: "center" })}
-          >
-            Middle
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={
-              selectedStyle.vAlign === "bottom" ? "font-semibold" : undefined
-            }
-            onClick={() => void applyStyle({ vAlign: "bottom" })}
-          >
-            Bottom
-          </DropdownMenuItem>
-
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>Borders</DropdownMenuLabel>
-          <DropdownMenuItem
-            className={
-              selectedStyle.border === "none" ? "font-semibold" : undefined
-            }
-            onClick={() => void applyStyle({ border: "none" })}
-          >
-            None
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={
-              selectedStyle.border === "all" ? "font-semibold" : undefined
-            }
-            onClick={() => void applyStyle({ border: "all" })}
-          >
-            All
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={
-              selectedStyle.border === "outer" ? "font-semibold" : undefined
-            }
-            onClick={() => void applyStyle({ border: "outer" })}
-          >
-            Outer
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={
-              selectedStyle.border === "inner" ? "font-semibold" : undefined
-            }
-            onClick={() => void applyStyle({ border: "inner" })}
-          >
-            Inner
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={
-              selectedStyle.border === "bottom" ? "font-semibold" : undefined
-            }
-            onClick={() => void applyStyle({ border: "bottom" })}
-          >
-            Bottom
-          </DropdownMenuItem>
-
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>Overflow</DropdownMenuLabel>
-          <DropdownMenuItem
-            className={
-              selectedStyle.overflow === "clip" ? "font-semibold" : undefined
-            }
-            onClick={() => void applyStyle({ overflow: "clip" })}
-          >
-            Clip
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={
-              selectedStyle.overflow === "wrap" ? "font-semibold" : undefined
-            }
-            onClick={() => void applyStyle({ overflow: "wrap" })}
-          >
-            Wrap
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={
-              selectedStyle.overflow === "overflow"
-                ? "font-semibold"
-                : undefined
-            }
-            onClick={() => void applyStyle({ overflow: "overflow" })}
-          >
-            Overflow
-          </DropdownMenuItem>
-
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            className={selectedStyle.wrapText ? "font-semibold" : undefined}
-            onClick={() =>
-              void applyStyle({ wrapText: !selectedStyle.wrapText })
-            }
-          >
-            <WrapText className="mr-2 size-4" />
-            {selectedStyle.wrapText ? "Disable Wrap Text" : "Enable Wrap Text"}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <Button
-        size="icon-sm"
-        variant={selectedStyle.wrapText ? "default" : "outline"}
-        onClick={() => void applyStyle({ wrapText: !selectedStyle.wrapText })}
-        title="Wrap text"
-      >
-        <WrapText className="size-4" />
-      </Button>
-
-      <Button
-        size="icon-sm"
-        variant="outline"
-        onClick={() => void clearFormatting()}
-        title="Clear formatting"
-      >
-        <Eraser className="size-4" />
-      </Button>
-
-      <span className="ml-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-        {selectionMode === "sheet"
-          ? "Sheet Selected"
-          : selectionMode === "column"
-            ? "Column Selected"
-            : "Cell Selected"}
-      </span>
     </div>
   )
 }

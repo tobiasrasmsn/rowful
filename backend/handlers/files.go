@@ -100,7 +100,12 @@ func (h FilesHandler) Open(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load sheet"})
 		return
 	}
-	writeJSON(w, http.StatusOK, models.SheetResponse{Workbook: workbook, Sheet: sheet})
+	regions, regionsErr := h.storage.GetKanbanRegions(id)
+	if regionsErr != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+		return
+	}
+	writeJSON(w, http.StatusOK, models.SheetResponse{Workbook: workbook, Sheet: sheet, KanbanRegions: regions})
 }
 
 func (h FilesHandler) Rename(w http.ResponseWriter, r *http.Request) {

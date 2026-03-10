@@ -3,6 +3,8 @@ import type {
   FileSettings,
   FileSettingsResponse,
   FilesResponse,
+  KanbanRegion,
+  KanbanRegionsResponse,
   SendEmailRequest,
   SelectionTarget,
   Sheet,
@@ -219,6 +221,18 @@ export async function createSheet(
     body: JSON.stringify(payload),
   })
   return parseJson<SheetResponse>(response)
+}
+
+export async function saveKanbanRegions(
+  workbookId: string,
+  payload: { kanbanRegions: KanbanRegion[] }
+): Promise<KanbanRegionsResponse> {
+  const response = await apiFetch(`${API_BASE_URL}/api/sheet/${workbookId}/kanban`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  return parseJson<KanbanRegionsResponse>(response)
 }
 
 export async function resizeSheet(

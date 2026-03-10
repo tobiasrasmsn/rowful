@@ -54,6 +54,9 @@ export type KanbanRegion = {
   statusCol: number
   titleCol: number
   statusOrder: string[]
+  cardColorEnabled: boolean
+  cardColorByCol: number
+  cardColorMap: Record<string, "none" | "green" | "red" | "yellow" | "purple">
   createdAt: string
 }
 
@@ -106,11 +109,17 @@ export type SendEmailRequest = {
 export type UploadResponse = {
   workbook: Workbook
   sheet: Sheet
+  kanbanRegions: KanbanRegion[]
 }
 
 export type SheetResponse = {
   workbook: Workbook
   sheet: Sheet
+  kanbanRegions: KanbanRegion[]
+}
+
+export type KanbanRegionsResponse = {
+  kanbanRegions: KanbanRegion[]
 }
 
 export type FileEntry = {
@@ -132,7 +141,7 @@ export type ErrorResponse = {
 }
 
 export type SelectionTarget = {
-  mode: "cell" | "column" | "sheet" | "range"
+  mode: "cell" | "row" | "column" | "sheet" | "range"
   row?: number
   col?: number
   range?: CellRange | null

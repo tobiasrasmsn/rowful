@@ -77,6 +77,9 @@ type GridViewportElement = HTMLRevoGridElement & {
   getSelectedRange?: () => Promise<
     (RangeArea & { type?: string; colType?: string }) | null
   >
+  scrollToCoordinate?: (cell: { x?: number; y?: number }) => Promise<void>
+  scrollToRow?: (coordinate?: number) => Promise<void>
+  scrollToColumnIndex?: (coordinate?: number) => Promise<void>
   setCellsFocus?: (
     cellStart?: { x: number; y: number },
     cellEnd?: { x: number; y: number },
@@ -138,6 +141,7 @@ const MAX_COLUMN_WIDTH =
   CELL_PREVIEW_CHAR_LIMIT * PREVIEW_CHAR_WIDTH_PX +
   GRID_CELL_HORIZONTAL_PADDING_PX
 const COLUMN_WIDTHS_STORAGE_KEY = "planar:column-widths:v1"
+const GRID_NAVIGATE_TO_CELL_EVENT = "planar:navigate-to-cell"
 const VISIBLE_ROW_OVERSCAN = 150
 const VISIBLE_COL_OVERSCAN = 12
 const FETCH_ROW_BLOCK = 400
@@ -197,7 +201,6 @@ const buildPreparedCellStyle = (
   return {
     backgroundColor: style.fillColor || undefined,
     color: style.fontColor || undefined,
-    fontFamily: style.fontFamily || undefined,
     fontSize: style.fontSize ? `${style.fontSize}px` : undefined,
     fontStyle: style.italic ? "italic" : undefined,
     fontWeight: style.bold ? "700" : undefined,
@@ -655,6 +658,22 @@ const getCellCoordsFromTarget = (target: Element): CellCoords | null => {
   return { row: rowZeroBased + 1, col: colZeroBased + 1 }
 }
 
+const getRowHeaderIndexFromTarget = (target: Element) => {
+  const rowHeaderViewport = target.closest(
+    'revogr-viewport-scroll[row-header], [row-header="true"]'
+  )
+  if (!rowHeaderViewport) {
+    return null
+  }
+  const rowHeaderCell = target.closest(".rgCell, .rgHeaderCell")
+  const raw = (rowHeaderCell?.textContent ?? target.textContent ?? "").trim()
+  const rowIndex = Number(raw)
+  if (!Number.isFinite(rowIndex) || rowIndex < 1) {
+    return null
+  }
+  return rowIndex
+}
+
 const parseClipboardText = (text: string) => {
   const lines = text.replace(/\r\n/g, "\n").split("\n")
   if (lines.length > 1 && lines[lines.length - 1] === "") {
@@ -916,7 +935,9 @@ export function Grid() {
   const sheet = useSheetStore((state) => state.sheet)
   const currency = useSheetStore((state) => state.fileSettings.currency)
   const zoom = useSheetStore((state) => state.zoom)
+  const sheetFontFamily = useSheetStore((state) => state.sheetFontFamily)
   const selectCell = useSheetStore((state) => state.selectCell)
+  const selectRow = useSheetStore((state) => state.selectRow)
   const selectColumn = useSheetStore((state) => state.selectColumn)
   const selectAll = useSheetStore((state) => state.selectAll)
   const selectionMode = useSheetStore((state) => state.selectionMode)
@@ -950,6 +971,7 @@ export function Grid() {
   const gridRef = useRef<GridViewportElement | null>(null)
   const gridContainerRef = useRef<HTMLDivElement | null>(null)
   const preparedGridDataRef = useRef<PreparedGridData | null>(null)
+  const preparedGridSheetKeyRef = useRef("")
   const viewportSyncFrameRef = useRef<number | null>(null)
   const viewportScrollFrameRef = useRef<number | null>(null)
   const viewportScrollEventRef = useRef<ViewPortScrollEvent | null>(null)
@@ -981,7 +1003,7 @@ export function Grid() {
     cut: () => void
     paste: (row: number, col: number) => void
   } | null>(null)
-  const [dropPreviewRange, setDropPreviewRange] = useState<{
+  const [, setDropPreviewRange] = useState<{
     rowStart: number
     rowEnd: number
     colStart: number
@@ -1092,6 +1114,16 @@ export function Grid() {
           colCount: 1,
         }
       }
+      if (selectionMode === "row") {
+        return {
+          row,
+          col,
+          rowStart: selectedRow,
+          rowCount: 1,
+          colStart: 1,
+          colCount: getGridColCount(sheet?.maxCol ?? 1),
+        }
+      }
       return {
         row,
         col,
@@ -1101,7 +1133,7 @@ export function Grid() {
         colCount: 1,
       }
     },
-    [selectedCol, selectedRange, selectionMode, sheet?.maxCol, sheet?.maxRow]
+    [selectedCol, selectedRange, selectedRow, selectionMode, sheet?.maxCol, sheet?.maxRow]
   )
 
   useEffect(() => {
@@ -1117,16 +1149,20 @@ export function Grid() {
   const preparedGridData = useMemo(() => {
     if (!sheet) {
       preparedGridDataRef.current = null
+      preparedGridSheetKeyRef.current = ""
       return null
     }
 
+    const preparedSheetKey = `${sheetKey}:${sheet.maxRow}:${sheet.maxCol}`
     const current = preparedGridDataRef.current
     if (
       !current ||
+      preparedGridSheetKeyRef.current !== preparedSheetKey ||
       current.source.length !== getGridRowCount(sheet.maxRow) ||
       current.columnLabels.length !== getGridColCount(sheet.maxCol)
     ) {
       preparedGridDataRef.current = createPreparedGridData(sheet)
+      preparedGridSheetKeyRef.current = preparedSheetKey
     }
 
     const prepared =
@@ -1134,7 +1170,7 @@ export function Grid() {
     preparedGridDataRef.current = prepared
     applySheetRowsToPreparedGridData(prepared, sheet.rows, currency)
     return prepared
-  }, [currency, sheet])
+  }, [currency, sheet, sheetKey])
 
   const dragHandleRange = useMemo(() => {
     const range = selectedRange ?? {
@@ -1329,6 +1365,23 @@ export function Grid() {
     [gridRowCount, selectColumn, setSelectedRange]
   )
 
+  const handleRowHeaderClick = useCallback(
+    (row: number | null | undefined) => {
+      if (!row || !Number.isFinite(row) || row < 1) {
+        return
+      }
+      setSelectedRange(null)
+      selectRow(row)
+      void gridRef.current?.setCellsFocus?.(
+        { x: 0, y: row - 1 },
+        { x: Math.max(gridColCount - 1, 0), y: row - 1 },
+        "rgCol",
+        "rgRow"
+      )
+    },
+    [gridColCount, selectRow, setSelectedRange]
+  )
+
   const handleSelectAll = useCallback(() => {
     setSelectedRange(null)
     selectAll()
@@ -1342,6 +1395,58 @@ export function Grid() {
       "rgRow"
     )
   }, [gridColCount, gridRowCount, selectAll, setSelectedRange])
+
+  const handleNavigateToCell = useCallback(
+    (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          rowStart?: number
+          rowEnd?: number
+          colStart?: number
+          colEnd?: number
+        }>
+      ).detail
+      const rowStart = Math.round(Number(detail?.rowStart))
+      const rowEndRaw = Math.round(Number(detail?.rowEnd))
+      const colStart = Math.round(Number(detail?.colStart))
+      const colEndRaw = Math.round(Number(detail?.colEnd))
+      if (
+        !Number.isFinite(rowStart) ||
+        !Number.isFinite(colStart) ||
+        rowStart < 1 ||
+        colStart < 1
+      ) {
+        return
+      }
+      const maxRow = Math.max(gridRowCount, 1)
+      const maxCol = Math.max(gridColCount, 1)
+      const rowEnd = Number.isFinite(rowEndRaw) && rowEndRaw >= 1 ? rowEndRaw : rowStart
+      const colEnd = Number.isFinite(colEndRaw) && colEndRaw >= 1 ? colEndRaw : colStart
+      const boundedRowStart = Math.min(rowStart, maxRow)
+      const boundedRowEnd = Math.min(rowEnd, maxRow)
+      const boundedColStart = Math.min(colStart, maxCol)
+      const boundedColEnd = Math.min(colEnd, maxCol)
+      const focusStart = { x: boundedColStart - 1, y: boundedRowStart - 1 }
+      const focusEnd = { x: boundedColEnd - 1, y: boundedRowEnd - 1 }
+
+      const grid = gridRef.current
+      if (!grid) {
+        return
+      }
+      void (async () => {
+        await ensureWindow({
+          rowStart: boundedRowStart,
+          rowCount: Math.max(1, boundedRowEnd - boundedRowStart + 1),
+          colStart: boundedColStart,
+          colCount: Math.max(1, boundedColEnd - boundedColStart + 1),
+        })
+        await grid.scrollToRow?.(focusStart.y)
+        await grid.scrollToColumnIndex?.(focusStart.x)
+        await grid.setCellsFocus?.(focusStart, focusEnd, "rgCol", "rgRow")
+      })()
+    },
+    [ensureWindow, gridColCount, gridRowCount]
+  )
 
   useEffect(() => {
     const grid = gridRef.current
@@ -1363,6 +1468,11 @@ export function Grid() {
     const handleGridClick = (event: Event) => {
       const target = event.target
       if (!(target instanceof Element)) {
+        return
+      }
+      const rowIndex = getRowHeaderIndexFromTarget(target)
+      if (rowIndex) {
+        handleRowHeaderClick(rowIndex)
         return
       }
       const cornerHeaderCell = target.closest(
@@ -1444,6 +1554,10 @@ export function Grid() {
       handleHeaderClickEvent as EventListener
     )
     grid.addEventListener("beforekeydown", handleBeforeKeyDown as EventListener)
+    window.addEventListener(
+      GRID_NAVIGATE_TO_CELL_EVENT,
+      handleNavigateToCell as EventListener
+    )
 
     return () => {
       grid.removeEventListener(
@@ -1472,11 +1586,17 @@ export function Grid() {
         "beforekeydown",
         handleBeforeKeyDown as EventListener
       )
+      window.removeEventListener(
+        GRID_NAVIGATE_TO_CELL_EVENT,
+        handleNavigateToCell as EventListener
+      )
     }
   }, [
     clearSelectedValues,
     extendKanbanDialogOpen,
     handleHeaderClick,
+    handleNavigateToCell,
+    handleRowHeaderClick,
     handleSelectAll,
     sendEmailDialogOpen,
     selectedCol,
@@ -1806,7 +1926,7 @@ export function Grid() {
       return
     }
     const name = window.prompt("Kanban name", "")
-    createKanbanFromSelection(statusCol, name || undefined)
+    void createKanbanFromSelection(statusCol, name || undefined)
   }, [createKanbanFromSelection, preparedGridData, selectedRange, sheet])
 
   const activeKanbanRegionAtMenu = useMemo(() => {
@@ -2051,21 +2171,15 @@ export function Grid() {
                 setMenuContext(buildMenuContext(directCell.row, directCell.col))
                 return
               }
+              const rowIndex = getRowHeaderIndexFromTarget(target)
+              if (rowIndex) {
+                setMenuContext(buildMenuContext(rowIndex, selectedCol))
+                return
+              }
               const rowHeaderViewport = target.closest(
                 'revogr-viewport-scroll[row-header], [row-header="true"]'
               )
               if (rowHeaderViewport) {
-                const rowHeaderCell = target.closest(".rgCell, .rgHeaderCell")
-                const raw = (
-                  rowHeaderCell?.textContent ??
-                  target.textContent ??
-                  ""
-                ).trim()
-                const rowIndex = Number(raw)
-                if (Number.isFinite(rowIndex) && rowIndex >= 1) {
-                  setMenuContext(buildMenuContext(rowIndex, selectedCol))
-                  return
-                }
                 setMenuContext(buildMenuContext(selectedRow, selectedCol))
                 return
               }
@@ -2090,6 +2204,7 @@ export function Grid() {
               {
                 "--planar-grid-font-size": `${Math.max(11, Math.round(12 * (zoom / 100)))}px`,
                 "--planar-grid-row-height": `${Math.max(26, Math.round(28 * (zoom / 100)))}px`,
+                "--planar-grid-font-family": `${sheetFontFamily}, "Segoe UI", Arial, sans-serif`,
                 cursor: isDraggingSelection ? "grabbing" : undefined,
               } as React.CSSProperties
             }

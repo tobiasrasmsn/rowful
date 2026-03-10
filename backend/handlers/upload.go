@@ -79,7 +79,12 @@ func (h UploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			}
 			sheet, loadErr := h.storage.GetSheetWindow(workbook.ID, sheetName, 1, defaultInitialRowCount, 1, defaultInitialColCount)
 			if loadErr == nil {
-				writeJSON(w, http.StatusOK, models.UploadResponse{Workbook: workbook, Sheet: sheet})
+				regions, regionsErr := h.storage.GetKanbanRegions(workbook.ID)
+				if regionsErr != nil {
+					writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+					return
+				}
+				writeJSON(w, http.StatusOK, models.UploadResponse{Workbook: workbook, Sheet: sheet, KanbanRegions: regions})
 				return
 			}
 		}
@@ -100,7 +105,12 @@ func (h UploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load workbook sheet"})
 			return
 		}
-		writeJSON(w, http.StatusOK, models.UploadResponse{Workbook: workbook, Sheet: sheet})
+		regions, regionsErr := h.storage.GetKanbanRegions(workbook.ID)
+		if regionsErr != nil {
+			writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+			return
+		}
+		writeJSON(w, http.StatusOK, models.UploadResponse{Workbook: workbook, Sheet: sheet, KanbanRegions: regions})
 		return
 	}
 
@@ -141,7 +151,12 @@ func (h UploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load imported workbook"})
 		return
 	}
-	writeJSON(w, http.StatusOK, models.UploadResponse{Workbook: workbookMeta, Sheet: sheet})
+	regions, regionsErr := h.storage.GetKanbanRegions(workbookMeta.ID)
+	if regionsErr != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+		return
+	}
+	writeJSON(w, http.StatusOK, models.UploadResponse{Workbook: workbookMeta, Sheet: sheet, KanbanRegions: regions})
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

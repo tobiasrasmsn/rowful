@@ -110,6 +110,12 @@ CREATE TABLE IF NOT EXISTS file_settings (
   FOREIGN KEY (workbook_id) REFERENCES workbooks(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS workbook_kanban_regions (
+  workbook_id TEXT PRIMARY KEY,
+  data_json TEXT NOT NULL DEFAULT '[]',
+  FOREIGN KEY (workbook_id) REFERENCES workbooks(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS managed_domains (
   domain TEXT PRIMARY KEY,
   created_at TEXT NOT NULL
@@ -156,6 +162,9 @@ CREATE TABLE IF NOT EXISTS managed_domains (
 	}
 	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_file_settings_workbook_id ON file_settings(workbook_id);`); err != nil {
 		return fmt.Errorf("create index on file_settings.workbook_id: %w", err)
+	}
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_workbook_kanban_regions_workbook_id ON workbook_kanban_regions(workbook_id);`); err != nil {
+		return fmt.Errorf("create index on workbook_kanban_regions.workbook_id: %w", err)
 	}
 	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_managed_domains_created_at ON managed_domains(created_at);`); err != nil {
 		return fmt.Errorf("create index on managed_domains.created_at: %w", err)
@@ -219,6 +228,31 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+func decodeKanbanRegions(raw string) ([]models.KanbanRegion, error) {
+	if strings.TrimSpace(raw) == "" {
+		return []models.KanbanRegion{}, nil
+	}
+	var regions []models.KanbanRegion
+	if err := json.Unmarshal([]byte(raw), &regions); err != nil {
+		return nil, fmt.Errorf("decode kanban regions: %w", err)
+	}
+	if regions == nil {
+		return []models.KanbanRegion{}, nil
+	}
+	return regions, nil
+}
+
+func encodeKanbanRegions(regions []models.KanbanRegion) (string, error) {
+	if regions == nil {
+		regions = []models.KanbanRegion{}
+	}
+	encoded, err := json.Marshal(regions)
+	if err != nil {
+		return "", fmt.Errorf("encode kanban regions: %w", err)
+	}
+	return string(encoded), nil
+}
+
 func (s *Store) SaveWorkbook(userID string, workbook models.Workbook, sheets map[string]models.Sheet, filePath string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	created := workbook.CreatedAt.UTC().Format(time.RFC3339Nano)
@@ -252,6 +286,13 @@ VALUES(?, ?, ?)
 ON CONFLICT(workbook_id) DO UPDATE SET user_id = excluded.user_id
 `, workbook.ID, userID, now); err != nil {
 		return fmt.Errorf("upsert workbook owner: %w", err)
+	}
+	if _, err := tx.Exec(`
+INSERT INTO workbook_kanban_regions(workbook_id, data_json)
+VALUES(?, '[]')
+ON CONFLICT(workbook_id) DO NOTHING
+`, workbook.ID); err != nil {
+		return fmt.Errorf("ensure workbook kanban row: %w", err)
 	}
 
 	if _, err := tx.Exec(`DELETE FROM sheets WHERE workbook_id = ?`, workbook.ID); err != nil {
@@ -341,6 +382,50 @@ func (s *Store) GetWorkbookByHash(fileHash string) (models.Workbook, map[string]
 		return models.Workbook{}, nil, false, err
 	}
 	return workbook, sheets, true, nil
+}
+
+func (s *Store) GetKanbanRegions(workbookID string) ([]models.KanbanRegion, error) {
+	var raw string
+	err := s.db.QueryRow(`
+SELECT data_json
+FROM workbook_kanban_regions
+WHERE workbook_id = ?
+`, workbookID).Scan(&raw)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []models.KanbanRegion{}, nil
+		}
+		return nil, fmt.Errorf("load kanban regions: %w", err)
+	}
+	return decodeKanbanRegions(raw)
+}
+
+func (s *Store) SaveKanbanRegions(workbookID string, regions []models.KanbanRegion) ([]models.KanbanRegion, error) {
+	encoded, err := encodeKanbanRegions(regions)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	result, err := s.db.Exec(`
+INSERT INTO workbook_kanban_regions(workbook_id, data_json)
+VALUES(?, ?)
+ON CONFLICT(workbook_id) DO UPDATE SET data_json = excluded.data_json
+`, workbookID, encoded)
+	if err != nil {
+		return nil, fmt.Errorf("save kanban regions: %w", err)
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		return nil, ErrNotFound
+	}
+	if _, err := s.db.Exec(`
+UPDATE workbooks
+SET updated_at = ?
+WHERE id = ?
+`, now, workbookID); err != nil {
+		return nil, fmt.Errorf("touch workbook after kanban save: %w", err)
+	}
+	return regions, nil
 }
 
 func (s *Store) GetWorkbookByID(id string) (models.Workbook, map[string]models.Sheet, error) {
@@ -632,6 +717,9 @@ WHERE id = ?
 `, oldName, newName, now, now, workbookID); err != nil {
 		return fmt.Errorf("update active sheet on rename: %w", err)
 	}
+	if err := s.renameKanbanSheetTx(tx, workbookID, oldName, newName); err != nil {
+		return err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit tx: %w", err)
@@ -674,6 +762,9 @@ func (s *Store) DeleteSheet(workbookID, name string) error {
 	}
 	if _, err := tx.Exec(`UPDATE workbooks SET active_sheet = ? WHERE id = ?`, nextActive, workbookID); err != nil {
 		return fmt.Errorf("update active sheet on delete: %w", err)
+	}
+	if err := s.deleteKanbanSheetTx(tx, workbookID, name); err != nil {
+		return err
 	}
 	if err := s.touchWorkbookTx(tx, workbookID); err != nil {
 		return err
@@ -751,6 +842,42 @@ func (s *Store) DeleteWorkbook(id string) (string, error) {
 		return "", ErrNotFound
 	}
 	return filePath, nil
+}
+
+func (s *Store) renameKanbanSheetTx(tx *sql.Tx, workbookID, oldName, newName string) error {
+	regions, err := s.getKanbanRegionsTx(tx, workbookID)
+	if err != nil {
+		return err
+	}
+	changed := false
+	for idx := range regions {
+		if regions[idx].SheetName != oldName {
+			continue
+		}
+		regions[idx].SheetName = newName
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	return s.saveKanbanRegionsTx(tx, workbookID, regions)
+}
+
+func (s *Store) deleteKanbanSheetTx(tx *sql.Tx, workbookID, sheetName string) error {
+	regions, err := s.getKanbanRegionsTx(tx, workbookID)
+	if err != nil {
+		return err
+	}
+	filtered := make([]models.KanbanRegion, 0, len(regions))
+	for _, region := range regions {
+		if region.SheetName != sheetName {
+			filtered = append(filtered, region)
+		}
+	}
+	if len(filtered) == len(regions) {
+		return nil
+	}
+	return s.saveKanbanRegionsTx(tx, workbookID, filtered)
 }
 
 func (s *Store) ListFiles(limit int) ([]models.FileEntry, error) {
@@ -1437,6 +1564,9 @@ WHERE workbook_id = ? AND sheet_name = ?`
 	switch mode {
 	case "sheet":
 		// no extra predicate
+	case "row":
+		query += ` AND row_idx = ?`
+		args = append(args, row)
 	case "column":
 		query += ` AND col_idx = ?`
 		args = append(args, col)
@@ -1489,6 +1619,9 @@ WHERE workbook_id = ? AND sheet_name = ?`
 	switch mode {
 	case "sheet":
 		// no extra predicate
+	case "row":
+		query += ` AND row_idx = ?`
+		args = append(args, row)
 	case "column":
 		query += ` AND col_idx = ?`
 		args = append(args, col)
@@ -1519,6 +1652,9 @@ WHERE workbook_id = ? AND sheet_name = ?`
 	switch mode {
 	case "sheet":
 		// no extra predicate
+	case "row":
+		query += ` AND row_idx = ?`
+		args = append(args, row)
 	case "column":
 		query += ` AND col_idx = ?`
 		args = append(args, col)
@@ -1726,6 +1862,37 @@ func (s *Store) touchWorkbookTx(tx *sql.Tx, workbookID string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if _, err := tx.Exec(`UPDATE workbooks SET updated_at = ?, last_opened_at = ? WHERE id = ?`, now, now, workbookID); err != nil {
 		return fmt.Errorf("update workbook timestamps: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) getKanbanRegionsTx(tx *sql.Tx, workbookID string) ([]models.KanbanRegion, error) {
+	var raw string
+	err := tx.QueryRow(`
+SELECT data_json
+FROM workbook_kanban_regions
+WHERE workbook_id = ?
+`, workbookID).Scan(&raw)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []models.KanbanRegion{}, nil
+		}
+		return nil, fmt.Errorf("load kanban regions in tx: %w", err)
+	}
+	return decodeKanbanRegions(raw)
+}
+
+func (s *Store) saveKanbanRegionsTx(tx *sql.Tx, workbookID string, regions []models.KanbanRegion) error {
+	encoded, err := encodeKanbanRegions(regions)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+INSERT INTO workbook_kanban_regions(workbook_id, data_json)
+VALUES(?, ?)
+ON CONFLICT(workbook_id) DO UPDATE SET data_json = excluded.data_json
+`, workbookID, encoded); err != nil {
+		return fmt.Errorf("save kanban regions in tx: %w", err)
 	}
 	return nil
 }

@@ -1,8 +1,19 @@
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react"
+import { DragDropIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
 import { useSheetStore } from "@/store/sheetStore"
 import type { KanbanRegion } from "@/types/sheet"
+import { Button } from "./ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "./ui/dialog"
 import { Input } from "./ui/input"
 import {
   Select,
@@ -63,6 +74,126 @@ const parsePayload = (
 }
 
 const EMPTY_STATUS_VALUE = "__KANBAN_EMPTY_STATUS__"
+const CARD_COLORS = ["none", "green", "red", "yellow", "purple"] as const
+type CardColor = (typeof CARD_COLORS)[number]
+
+const colorDotClass: Record<CardColor, string> = {
+  none: "bg-transparent",
+  green: "bg-green-500",
+  red: "bg-red-500",
+  yellow: "bg-yellow-500",
+  purple: "bg-purple-500",
+}
+
+const COLOR_KEYWORDS: Record<Exclude<CardColor, "none">, string[]> = {
+  green: [
+    "done",
+    "complete",
+    "completed",
+    "success",
+    "successful",
+    "resolved",
+    "approved",
+    "closed",
+    "finish",
+    "finished",
+    "ready",
+    "ok",
+    "pass",
+    "passed",
+    "shipped",
+    "deployed",
+    "live",
+  ],
+  red: [
+    "not",
+    "todo",
+    "to do",
+    "backlog",
+    "blocked",
+    "blocker",
+    "stuck",
+    "failed",
+    "fail",
+    "error",
+    "critical",
+    "urgent",
+    "rejected",
+    "cancel",
+    "canceled",
+    "cancelled",
+    "overdue",
+    "missed",
+  ],
+  yellow: [
+    "progress",
+    "in progress",
+    "doing",
+    "active",
+    "pending",
+    "ongoing",
+    "wip",
+    "started",
+    "running",
+    "processing",
+    "working",
+    "next",
+    "soon",
+    "attention",
+  ],
+  purple: [
+    "review",
+    "in review",
+    "qa",
+    "testing",
+    "test",
+    "verify",
+    "verification",
+    "wait",
+    "waiting",
+    "hold",
+    "on hold",
+    "paused",
+    "planning",
+    "refine",
+    "triage",
+  ],
+}
+
+const suggestCardColor = (value: string): CardColor => {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\w\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  if (!normalized) {
+    return "none"
+  }
+  const padded = ` ${normalized} `
+  for (const keyword of COLOR_KEYWORDS.red) {
+    if (padded.includes(` ${keyword} `) || normalized.includes(keyword)) {
+      return "red"
+    }
+  }
+  for (const keyword of COLOR_KEYWORDS.green) {
+    if (padded.includes(` ${keyword} `) || normalized.includes(keyword)) {
+      return "green"
+    }
+  }
+  for (const keyword of COLOR_KEYWORDS.yellow) {
+    if (padded.includes(` ${keyword} `) || normalized.includes(keyword)) {
+      return "yellow"
+    }
+  }
+  for (const keyword of COLOR_KEYWORDS.purple) {
+    if (padded.includes(` ${keyword} `) || normalized.includes(keyword)) {
+      return "purple"
+    }
+  }
+  return "none"
+}
 
 export function KanbanView({ region }: KanbanViewProps) {
   const sheet = useSheetStore((state) => state.sheet)
@@ -72,6 +203,9 @@ export function KanbanView({ region }: KanbanViewProps) {
     (state) => state.setKanbanStatusOrder
   )
   const setKanbanTitleCol = useSheetStore((state) => state.setKanbanTitleCol)
+  const setKanbanCardColorConfig = useSheetStore(
+    (state) => state.setKanbanCardColorConfig
+  )
   const [draggingRow, setDraggingRow] = useState<number | null>(null)
   const [draggingStatus, setDraggingStatus] = useState<string | null>(null)
   const [dragPreview, setDragPreview] = useState<{
@@ -79,6 +213,11 @@ export function KanbanView({ region }: KanbanViewProps) {
     y: number
     row: number
   } | null>(null)
+  const [dragCursorOffset, setDragCursorOffset] = useState<{
+    x: number
+    y: number
+  } | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const matrix = useMemo(() => {
     const data = new Map<number, Map<number, string>>()
@@ -184,17 +323,129 @@ export function KanbanView({ region }: KanbanViewProps) {
       ),
     [region.range.colEnd, region.range.colStart]
   )
+  const cardColorByCol = useMemo(() => {
+    if (
+      region.cardColorByCol >= region.range.colStart &&
+      region.cardColorByCol <= region.range.colEnd
+    ) {
+      return region.cardColorByCol
+    }
+    return titleCol
+  }, [
+    region.cardColorByCol,
+    region.range.colEnd,
+    region.range.colStart,
+    titleCol,
+  ])
+  const cardColorValues = useMemo(() => {
+    const values = new Set<string>()
+    for (const row of rows) {
+      const value = matrix.get(row)?.get(cardColorByCol)?.trim() ?? ""
+      if (value) {
+        values.add(value)
+      }
+    }
+    return Array.from(values).sort((a, b) => a.localeCompare(b))
+  }, [cardColorByCol, matrix, rows])
+  const cardColorMap = useMemo(() => {
+    const map: Record<string, CardColor> = {}
+    for (const [key, value] of Object.entries(region.cardColorMap ?? {})) {
+      map[key] = CARD_COLORS.includes(value as CardColor)
+        ? (value as CardColor)
+        : "none"
+    }
+    return map
+  }, [region.cardColorMap])
+
+  const moveDroppedCard = (
+    event: DragEvent<HTMLElement>,
+    targetStatus: string,
+    targetIndex: number
+  ) => {
+    const payload = parsePayload(event.dataTransfer.getData("application/json"))
+    if (!payload || payload.kind !== "card") {
+      return false
+    }
+    void moveKanbanCard(region.id, payload.row, targetStatus, targetIndex)
+    return true
+  }
+
+  const autoAssignCardColors = useCallback((values: string[]) => {
+    const map: Record<string, CardColor> = {}
+    for (const value of values) {
+      map[value] = suggestCardColor(value)
+    }
+    return map
+  }, [])
+
+  const inferredCardColorMap = useMemo(() => {
+    if (!region.cardColorEnabled) {
+      return cardColorMap
+    }
+    const next = { ...cardColorMap }
+    for (const value of cardColorValues) {
+      if (!(value in next)) {
+        next[value] = suggestCardColor(value)
+      }
+    }
+    return next
+  }, [cardColorMap, cardColorValues, region.cardColorEnabled])
+
+  useEffect(() => {
+    if (!region.cardColorEnabled) {
+      return
+    }
+    const missingValues = cardColorValues.filter((value) => !(value in cardColorMap))
+    if (missingValues.length === 0) {
+      return
+    }
+    void setKanbanCardColorConfig(region.id, {
+      cardColorMap: {
+        ...cardColorMap,
+        ...autoAssignCardColors(missingValues),
+      },
+    })
+  }, [
+    autoAssignCardColors,
+    cardColorMap,
+    cardColorValues,
+    region.cardColorEnabled,
+    region.id,
+    setKanbanCardColorConfig,
+  ])
 
   if (!sheet || sheet.name !== region.sheetName) {
     return null
+  }
+
+  const cardColorForRow = (row: number): CardColor => {
+    if (!region.cardColorEnabled) {
+      return "none"
+    }
+    const value = matrix.get(row)?.get(cardColorByCol)?.trim() ?? ""
+    if (!value) {
+      return "none"
+    }
+    return inferredCardColorMap[value] ?? "none"
   }
 
   const renderCardBody = (row: number, interactive: boolean) => (
     <>
       <div className="mb-2 flex items-center justify-between">
         <div className="flex w-full flex-row items-center justify-between border-b px-3 py-2 text-sm font-medium text-muted-foreground">
-          {matrix.get(row)?.get(titleCol) || `Row ${row}`}
-          <span className="cursor-grab text-xs text-muted-foreground">::</span>
+          <span className="inline-flex min-w-0 items-center gap-2">
+            {region.cardColorEnabled && cardColorForRow(row) !== "none" ? (
+              <span
+                className={`inline-block size-2.5 shrink-0 rounded-full ${colorDotClass[cardColorForRow(row)]}`}
+              />
+            ) : null}
+            <span className="truncate">
+              {matrix.get(row)?.get(titleCol) || `Row ${row}`}
+            </span>
+          </span>
+          <span className="cursor-grab text-muted-foreground">
+            <HugeiconsIcon icon={DragDropIcon} className="size-4" />
+          </span>
         </div>
       </div>
       <div className="flex flex-col gap-2 p-4">
@@ -266,32 +517,159 @@ export function KanbanView({ region }: KanbanViewProps) {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="border-b border-border px-4 py-2 text-sm font-medium">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <span>{region.name}</span>
-          <label className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
-            Card title field
-            <select
-              className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
-              value={titleCol}
-              onChange={(event) => {
-                const col = Number(event.target.value)
-                if (Number.isFinite(col)) {
-                  setKanbanTitleCol(region.id, col)
-                }
-              }}
-            >
-              {titleColOptions.map((col) => (
-                <option key={col} value={col}>
-                  {toColumnLabel(col)} -{" "}
-                  {labels[col - region.range.colStart] || toColumnLabel(col)}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                Settings
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Kanban Settings</DialogTitle>
+                <DialogDescription>
+                  Configure card title and optional card color coding.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-3">
+                <label className="flex items-center justify-between gap-2 text-xs font-normal text-muted-foreground">
+                  <span>Card title field</span>
+                  <select
+                    className="h-8 min-w-56 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+                    value={titleCol}
+                    onChange={(event) => {
+                      const col = Number(event.target.value)
+                      if (Number.isFinite(col)) {
+                        void setKanbanTitleCol(region.id, col)
+                      }
+                    }}
+                  >
+                    {titleColOptions.map((col) => (
+                      <option key={col} value={col}>
+                        {toColumnLabel(col)} -{" "}
+                        {labels[col - region.range.colStart] || toColumnLabel(col)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={region.cardColorEnabled}
+                    onChange={(event) => {
+                      const enabled = event.target.checked
+                      if (!enabled) {
+                        void setKanbanCardColorConfig(region.id, {
+                          cardColorEnabled: false,
+                        })
+                        return
+                      }
+                      void setKanbanCardColorConfig(region.id, {
+                        cardColorEnabled: true,
+                        cardColorByCol: cardColorByCol,
+                        cardColorMap: {
+                          ...inferredCardColorMap,
+                          ...autoAssignCardColors(cardColorValues),
+                        },
+                      })
+                    }}
+                  />
+                  Enable card color dots
+                </label>
+                <label className="flex items-center justify-between gap-2 text-xs font-normal text-muted-foreground">
+                  <span>Color by field</span>
+                  <select
+                    disabled={!region.cardColorEnabled}
+                    className="h-8 min-w-56 rounded-md border border-input bg-background px-2 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    value={cardColorByCol}
+                    onChange={(event) => {
+                      const col = Number(event.target.value)
+                      if (!Number.isFinite(col)) {
+                        return
+                      }
+                      void setKanbanCardColorConfig(region.id, {
+                        cardColorByCol: col,
+                        cardColorMap: {
+                          ...inferredCardColorMap,
+                          ...autoAssignCardColors(
+                            Array.from(
+                              new Set(
+                                rows
+                                  .map(
+                                    (row) =>
+                                      matrix.get(row)?.get(col)?.trim() ?? ""
+                                  )
+                                  .filter(Boolean)
+                              )
+                            )
+                          ),
+                        },
+                      })
+                    }}
+                  >
+                    {titleColOptions.map((col) => (
+                      <option key={col} value={col}>
+                        {toColumnLabel(col)} -{" "}
+                        {labels[col - region.range.colStart] || toColumnLabel(col)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {region.cardColorEnabled ? (
+                  <div className="rounded-md border border-border bg-muted/20 p-2">
+                    <div className="mb-2 text-xs font-normal text-muted-foreground">
+                      Value colors for {toColumnLabel(cardColorByCol)}
+                    </div>
+                    {cardColorValues.length === 0 ? (
+                      <div className="text-xs font-normal text-muted-foreground">
+                        No values found in this field.
+                      </div>
+                    ) : (
+                      <div className="grid max-h-64 gap-2 overflow-auto pr-1 md:grid-cols-2">
+                        {cardColorValues.map((value) => (
+                          <label
+                            key={value}
+                            className="flex items-center justify-between gap-2 rounded border border-border bg-background px-2 py-1 text-xs font-normal text-foreground"
+                          >
+                            <span className="truncate" title={value}>
+                              {value}
+                            </span>
+                            <select
+                              className="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+                              value={inferredCardColorMap[value] ?? "none"}
+                              onChange={(event) => {
+                                const next = event.target.value as CardColor
+                                if (!CARD_COLORS.includes(next)) {
+                                  return
+                                }
+                                void setKanbanCardColorConfig(region.id, {
+                                  cardColorMap: {
+                                    ...inferredCardColorMap,
+                                    [value]: next,
+                                  },
+                                })
+                              }}
+                            >
+                              {CARD_COLORS.map((color) => (
+                                <option key={color} value={color}>
+                                  {color}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-3">
-        <div className="grid min-w-max grid-flow-col gap-3">
+        <div className="flex flex-row gap-3">
           {statuses.map((status) => {
             const cards = cardsByStatus.get(status) ?? []
             const canDeleteStatus =
@@ -310,7 +688,11 @@ export function KanbanView({ region }: KanbanViewProps) {
                   const payload = parsePayload(
                     event.dataTransfer.getData("application/json")
                   )
-                  if (!payload || payload.kind !== "column") {
+                  if (!payload) {
+                    return
+                  }
+                  if (payload.kind === "card") {
+                    void moveKanbanCard(region.id, payload.row, status, cards.length)
                     return
                   }
                   const from = statuses.indexOf(payload.status)
@@ -321,7 +703,7 @@ export function KanbanView({ region }: KanbanViewProps) {
                   const next = [...statuses]
                   const [moved] = next.splice(from, 1)
                   next.splice(to, 0, moved)
-                  setKanbanStatusOrder(
+                  void setKanbanStatusOrder(
                     region.id,
                     next.filter((item) => item !== "No status")
                   )
@@ -344,7 +726,7 @@ export function KanbanView({ region }: KanbanViewProps) {
                     }}
                     onDragEnd={() => setDraggingStatus(null)}
                   >
-                    ::
+                    <HugeiconsIcon icon={DragDropIcon} className="size-4" />
                   </span>
                   <span>{status}</span>
                   {status !== "No status" ? (
@@ -359,10 +741,12 @@ export function KanbanView({ region }: KanbanViewProps) {
                       }
                       onClick={() => {
                         if (cards.length > 0) {
-                          toast.error("Move or clear all cards in this status before deleting the column.")
+                          toast.error(
+                            "Move or clear all cards in this status before deleting the column."
+                          )
                           return
                         }
-                        setKanbanStatusOrder(
+                        void setKanbanStatusOrder(
                           region.id,
                           region.statusOrder.filter((item) => item !== status)
                         )
@@ -379,18 +763,8 @@ export function KanbanView({ region }: KanbanViewProps) {
                   }}
                   onDrop={(event) => {
                     event.preventDefault()
-                    const payload = parsePayload(
-                      event.dataTransfer.getData("application/json")
-                    )
-                    if (!payload || payload.kind !== "card") {
-                      return
-                    }
-                    void moveKanbanCard(
-                      region.id,
-                      payload.row,
-                      status,
-                      cards.length
-                    )
+                    event.stopPropagation()
+                    moveDroppedCard(event, status, cards.length)
                   }}
                 >
                   {cards.map((row, cardIndex) => (
@@ -401,6 +775,11 @@ export function KanbanView({ region }: KanbanViewProps) {
                         draggingRow === row ? "opacity-40" : ""
                       }`}
                       onDragStart={(event) => {
+                        const rect = event.currentTarget.getBoundingClientRect()
+                        const cursorOffset = {
+                          x: event.clientX - rect.left,
+                          y: event.clientY - rect.top,
+                        }
                         const transparentPixel =
                           document.createElement("canvas")
                         transparentPixel.width = 1
@@ -418,9 +797,10 @@ export function KanbanView({ region }: KanbanViewProps) {
                           } satisfies DragCardPayload)
                         )
                         setDraggingRow(row)
+                        setDragCursorOffset(cursorOffset)
                         setDragPreview({
-                          x: event.clientX + 12,
-                          y: event.clientY + 12,
+                          x: event.clientX - cursorOffset.x,
+                          y: event.clientY - cursorOffset.y,
                           row,
                         })
                       }}
@@ -432,8 +812,10 @@ export function KanbanView({ region }: KanbanViewProps) {
                           current
                             ? {
                                 ...current,
-                                x: event.clientX + 12,
-                                y: event.clientY + 12,
+                                x:
+                                  event.clientX - (dragCursorOffset?.x ?? 0),
+                                y:
+                                  event.clientY - (dragCursorOffset?.y ?? 0),
                               }
                             : current
                         )
@@ -441,24 +823,15 @@ export function KanbanView({ region }: KanbanViewProps) {
                       onDragEnd={() => {
                         setDraggingRow(null)
                         setDragPreview(null)
+                        setDragCursorOffset(null)
                       }}
                       onDragOver={(event) => {
                         event.preventDefault()
                       }}
                       onDrop={(event) => {
                         event.preventDefault()
-                        const payload = parsePayload(
-                          event.dataTransfer.getData("application/json")
-                        )
-                        if (!payload || payload.kind !== "card") {
-                          return
-                        }
-                        void moveKanbanCard(
-                          region.id,
-                          payload.row,
-                          status,
-                          cardIndex
-                        )
+                        event.stopPropagation()
+                        moveDroppedCard(event, status, cardIndex)
                       }}
                     >
                       {renderCardBody(row, true)}

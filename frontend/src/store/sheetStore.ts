@@ -20,6 +20,7 @@ import {
   renameFile,
   resizeSheet as resizeSheetRequest,
   renameSheet as renameSheetRequest,
+  saveKanbanRegions as saveKanbanRegionsRequest,
   updateCell as updateCellRequest,
   updateFileSettings,
   uploadWorkbook,
@@ -40,7 +41,7 @@ import type {
   Workbook,
 } from "@/types/sheet"
 
-type SelectionMode = "cell" | "column" | "sheet"
+type SelectionMode = "cell" | "row" | "column" | "sheet"
 type SelectedCell = {
   address: string
   value: string
@@ -82,6 +83,7 @@ type SheetState = {
   isLoading: boolean
   error: string | null
   zoom: number
+  sheetFontFamily: string
   search: string
   fileSettings: FileSettings
   kanbanRegions: KanbanRegion[]
@@ -101,6 +103,7 @@ type SheetState = {
   ensureWindow: (window: ViewportWindow & { sheetName?: string }) => Promise<void>
   updateCell: (row: number, col: number, value: string) => Promise<void>
   selectCell: (row: number, col: number, value: string, formula: string) => void
+  selectRow: (row: number) => void
   selectColumn: (col: number) => void
   selectAll: () => void
   undo: () => Promise<void>
@@ -119,11 +122,20 @@ type SheetState = {
   setSearch: (value: string) => void
   setFileCurrency: (currency: string) => Promise<void>
   saveEmailSettings: (email: SMTPSettings) => Promise<void>
+  setSheetFontFamily: (fontFamily: string) => void
   setViewportWindow: (window: ViewportWindow) => void
-  createKanbanFromSelection: (statusCol: number, name?: string) => KanbanRegion | null
+  createKanbanFromSelection: (statusCol: number, name?: string) => Promise<KanbanRegion | null>
   extendKanbanRegion: (regionId: string, axis: "rows" | "cols", amount?: number) => Promise<void>
-  setKanbanStatusOrder: (regionId: string, statusOrder: string[]) => void
-  setKanbanTitleCol: (regionId: string, titleCol: number) => void
+  setKanbanStatusOrder: (regionId: string, statusOrder: string[]) => Promise<void>
+  setKanbanTitleCol: (regionId: string, titleCol: number) => Promise<void>
+  setKanbanCardColorConfig: (
+    regionId: string,
+    patch: Partial<{
+      cardColorEnabled: boolean
+      cardColorByCol: number
+      cardColorMap: Record<string, "none" | "green" | "red" | "yellow" | "purple">
+    }>
+  ) => Promise<void>
   moveKanbanCard: (
     regionId: string,
     sourceRow: number,
@@ -141,7 +153,8 @@ const DEFAULT_WINDOW: ViewportWindow = {
 const CACHE_ROW_PADDING = 800
 const CACHE_COL_PADDING = 24
 const MAX_HISTORY_RANGE_AREA = 4096
-const KANBAN_REGIONS_STORAGE_KEY = "planar:kanban-regions:v1"
+const SHEET_FONT_FAMILIES_STORAGE_KEY = "planar:sheet-font-families:v1"
+const DEFAULT_SHEET_FONT_FAMILY = "Calibri"
 let clearValuesInFlight = false
 let refreshFilesDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -153,7 +166,8 @@ const EMPTY_CELL: SelectedCell = {
 
 const EMPTY_STYLE: CellStyle = {}
 
-type PersistedKanbanRegionsByWorkbook = Record<string, KanbanRegion[]>
+type PersistedSheetFontsByWorkbook = Record<string, Record<string, string>>
+type KanbanCardColor = "none" | "green" | "red" | "yellow" | "purple"
 
 const toColumnLabel = (index: number) => {
   let label = ""
@@ -266,6 +280,63 @@ const defaultKanbanTitleCol = (range: CellRange, statusCol: number) => {
   }
   return statusCol
 }
+
+const KANBAN_CARD_COLORS: KanbanCardColor[] = [
+  "none",
+  "green",
+  "red",
+  "yellow",
+  "purple",
+]
+
+const normalizeKanbanCardColorMap = (
+  map: unknown
+): Record<string, KanbanCardColor> => {
+  if (!map || typeof map !== "object") {
+    return {}
+  }
+  const result: Record<string, KanbanCardColor> = {}
+  for (const [key, rawValue] of Object.entries(map as Record<string, unknown>)) {
+    if (typeof key !== "string") {
+      continue
+    }
+    if (rawValue === "orange") {
+      result[key] = "yellow"
+      continue
+    }
+    if (
+      typeof rawValue !== "string" ||
+      !KANBAN_CARD_COLORS.includes(rawValue as KanbanCardColor)
+    ) {
+      continue
+    }
+    result[key] = rawValue as KanbanCardColor
+  }
+  return result
+}
+
+const normalizeKanbanRegions = (regions: KanbanRegion[]): KanbanRegion[] =>
+  regions.map((region) => {
+    const safeTitleCol =
+      typeof region.titleCol === "number"
+        ? region.titleCol
+        : defaultKanbanTitleCol(region.range, region.statusCol)
+    const safeColorByCol =
+      typeof region.cardColorByCol === "number"
+        ? region.cardColorByCol
+        : safeTitleCol
+    return {
+      ...region,
+      titleCol: safeTitleCol,
+      statusOrder: Array.isArray(region.statusOrder) ? region.statusOrder : [],
+      cardColorEnabled: Boolean(region.cardColorEnabled),
+      cardColorByCol:
+        safeColorByCol >= region.range.colStart && safeColorByCol <= region.range.colEnd
+          ? safeColorByCol
+          : safeTitleCol,
+      cardColorMap: normalizeKanbanCardColorMap(region.cardColorMap),
+    }
+  })
 
 const mergeRows = (currentRows: Sheet["rows"], incomingRows: Sheet["rows"]) => {
   const rowMap = new Map<number, Map<number, Cell>>()
@@ -418,6 +489,11 @@ const patchLoadedCells = (
   } else if (target.mode === "column" && target.col) {
     for (const row of rows) {
       visit(row.index, target.col)
+    }
+  } else if (target.mode === "row" && target.row) {
+    const selectedRow = rows.find((sheetRow) => sheetRow.index === target.row)
+    for (const cell of selectedRow?.cells ?? []) {
+      visit(target.row, cell.col)
     }
   } else if (target.mode === "range" && target.range) {
     for (let row = target.range.rowStart; row <= target.range.rowEnd; row += 1) {
@@ -580,6 +656,9 @@ const getSelectionTarget = (state: {
   if (state.selectionMode === "sheet") {
     return { mode: "sheet" }
   }
+  if (state.selectionMode === "row") {
+    return { mode: "row", row: state.selectedRow }
+  }
   if (state.selectionMode === "column") {
     return { mode: "column", col: state.selectedCol }
   }
@@ -600,6 +679,9 @@ const getLoadedCellsForTarget = (sheet: Sheet | null, target: SelectionTarget) =
     return sheet.rows
       .map((row) => row.cells.find((cell) => cell.col === target.col))
       .filter((cell): cell is Cell => Boolean(cell))
+  }
+  if (target.mode === "row" && target.row) {
+    return sheet.rows.find((row) => row.index === target.row)?.cells ?? []
   }
   if (target.mode === "range" && target.range) {
     const { rowStart, rowEnd, colStart, colEnd } = target.range
@@ -640,6 +722,15 @@ const sheetStyleFromSelection = (
     for (const currentRow of sheet.rows) {
       const cell = currentRow.cells.find((currentCell) => currentCell.col === col)
       if (cell?.style) {
+        return cell.style
+      }
+    }
+    return {}
+  }
+  if (mode === "row") {
+    const selectedRow = sheet.rows.find((currentRow) => currentRow.index === row)
+    for (const cell of selectedRow?.cells ?? []) {
+      if (cell.style) {
         return cell.style
       }
     }
@@ -706,12 +797,12 @@ const normalizeWindow = (sheet: Sheet | null, window: ViewportWindow): ViewportW
   }
 }
 
-const readPersistedKanbanRegions = (): PersistedKanbanRegionsByWorkbook => {
+const readPersistedSheetFonts = (): PersistedSheetFontsByWorkbook => {
   if (typeof window === "undefined") {
     return {}
   }
   try {
-    const raw = window.localStorage.getItem(KANBAN_REGIONS_STORAGE_KEY)
+    const raw = window.localStorage.getItem(SHEET_FONT_FAMILIES_STORAGE_KEY)
     if (!raw) {
       return {}
     }
@@ -719,24 +810,29 @@ const readPersistedKanbanRegions = (): PersistedKanbanRegionsByWorkbook => {
     if (!parsed || typeof parsed !== "object") {
       return {}
     }
-    const result: PersistedKanbanRegionsByWorkbook = {}
-    for (const [workbookId, rawRegions] of Object.entries(parsed as Record<string, unknown>)) {
-      if (!Array.isArray(rawRegions)) {
+    const result: PersistedSheetFontsByWorkbook = {}
+    for (const [workbookId, rawBySheet] of Object.entries(
+      parsed as Record<string, unknown>
+    )) {
+      if (!rawBySheet || typeof rawBySheet !== "object") {
         continue
       }
-      result[workbookId] = rawRegions
-        .filter((item): item is KanbanRegion => Boolean(item && typeof item === "object"))
-        .map((region) => {
-          const safeRange = region.range
-          return {
-            ...region,
-            titleCol:
-              typeof region.titleCol === "number"
-                ? region.titleCol
-                : defaultKanbanTitleCol(safeRange, region.statusCol),
-            statusOrder: Array.isArray(region.statusOrder) ? region.statusOrder : [],
-          }
-        })
+      const bySheet: Record<string, string> = {}
+      for (const [sheetName, rawFont] of Object.entries(
+        rawBySheet as Record<string, unknown>
+      )) {
+        if (!sheetName || typeof rawFont !== "string") {
+          continue
+        }
+        const value = rawFont.trim()
+        if (!value) {
+          continue
+        }
+        bySheet[sheetName] = value
+      }
+      if (Object.keys(bySheet).length > 0) {
+        result[workbookId] = bySheet
+      }
     }
     return result
   } catch {
@@ -744,17 +840,59 @@ const readPersistedKanbanRegions = (): PersistedKanbanRegionsByWorkbook => {
   }
 }
 
-const writePersistedKanbanRegions = (workbookId: string, regions: KanbanRegion[]) => {
+const writePersistedSheetFonts = (
+  workbookId: string,
+  bySheet: Record<string, string>
+) => {
   if (!workbookId || typeof window === "undefined") {
     return
   }
-  const all = readPersistedKanbanRegions()
-  all[workbookId] = regions
+  const all = readPersistedSheetFonts()
+  all[workbookId] = bySheet
   try {
-    window.localStorage.setItem(KANBAN_REGIONS_STORAGE_KEY, JSON.stringify(all))
+    window.localStorage.setItem(
+      SHEET_FONT_FAMILIES_STORAGE_KEY,
+      JSON.stringify(all)
+    )
   } catch {
     // ignore storage failures
   }
+}
+
+const getPersistedSheetFontFamily = (workbookId: string, sheetName: string) => {
+  const byWorkbook = readPersistedSheetFonts()[workbookId]
+  return byWorkbook?.[sheetName] || DEFAULT_SHEET_FONT_FAMILY
+}
+
+const renamePersistedSheetFont = (
+  workbookId: string,
+  oldName: string,
+  newName: string
+) => {
+  if (!workbookId || !oldName || !newName || oldName === newName) {
+    return
+  }
+  const all = readPersistedSheetFonts()
+  const byWorkbook = { ...(all[workbookId] ?? {}) }
+  if (!(oldName in byWorkbook)) {
+    return
+  }
+  byWorkbook[newName] = byWorkbook[oldName]
+  delete byWorkbook[oldName]
+  writePersistedSheetFonts(workbookId, byWorkbook)
+}
+
+const deletePersistedSheetFont = (workbookId: string, sheetName: string) => {
+  if (!workbookId || !sheetName) {
+    return
+  }
+  const all = readPersistedSheetFonts()
+  const byWorkbook = { ...(all[workbookId] ?? {}) }
+  if (!(sheetName in byWorkbook)) {
+    return
+  }
+  delete byWorkbook[sheetName]
+  writePersistedSheetFonts(workbookId, byWorkbook)
 }
 
 const scheduleRefreshFiles = (refresh: () => Promise<void>, delayMs = 350) => {
@@ -775,6 +913,16 @@ const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms)
   })
+
+const persistKanbanRegions = async (
+  workbookId: string,
+  regions: KanbanRegion[]
+) => {
+  const payload = await saveKanbanRegionsRequest(workbookId, {
+    kanbanRegions: regions,
+  })
+  return normalizeKanbanRegions(payload.kanbanRegions)
+}
 
 const expandWindow = (
   sheet: Sheet | null,
@@ -857,6 +1005,7 @@ export const useSheetStore = create<SheetState & {
   isLoading: false,
   error: null,
   zoom: 100,
+  sheetFontFamily: DEFAULT_SHEET_FONT_FAMILY,
   search: "",
   fileSettings: DEFAULT_FILE_SETTINGS,
   kanbanRegions: [],
@@ -885,7 +1034,11 @@ export const useSheetStore = create<SheetState & {
         loadedWindows: [windowKey(payload.sheet.name, DEFAULT_WINDOW)],
         loadingWindows: [],
         viewportWindow: DEFAULT_WINDOW,
-        kanbanRegions: readPersistedKanbanRegions()[payload.workbook.id] ?? [],
+        sheetFontFamily: getPersistedSheetFontFamily(
+          payload.workbook.id,
+          payload.sheet.name
+        ),
+        kanbanRegions: normalizeKanbanRegions(payload.kanbanRegions),
         isLoading: false,
       })
       setLastOpenedSheetForFile(payload.workbook.id, payload.sheet.name)
@@ -927,7 +1080,11 @@ export const useSheetStore = create<SheetState & {
         loadedWindows: [windowKey(payload.sheet.name, DEFAULT_WINDOW)],
         loadingWindows: [],
         viewportWindow: DEFAULT_WINDOW,
-        kanbanRegions: readPersistedKanbanRegions()[payload.workbook.id] ?? [],
+        sheetFontFamily: getPersistedSheetFontFamily(
+          payload.workbook.id,
+          payload.sheet.name
+        ),
+        kanbanRegions: normalizeKanbanRegions(payload.kanbanRegions),
         isLoading: false,
       })
       setLastOpenedSheetForFile(payload.workbook.id, payload.sheet.name)
@@ -973,6 +1130,11 @@ export const useSheetStore = create<SheetState & {
         loadedWindows: [windowKey(payload.sheet.name, DEFAULT_WINDOW)],
         loadingWindows: [],
         viewportWindow: DEFAULT_WINDOW,
+        sheetFontFamily: getPersistedSheetFontFamily(
+          payload.workbook.id,
+          payload.sheet.name
+        ),
+        kanbanRegions: normalizeKanbanRegions(payload.kanbanRegions),
         isLoading: false,
       })
       setLastOpenedSheetForFile(payload.workbook.id, payload.sheet.name)
@@ -1017,6 +1179,11 @@ export const useSheetStore = create<SheetState & {
         loadedWindows: [windowKey(payload.sheet.name, DEFAULT_WINDOW)],
         loadingWindows: [],
         viewportWindow: DEFAULT_WINDOW,
+        sheetFontFamily: getPersistedSheetFontFamily(
+          payload.workbook.id,
+          payload.sheet.name
+        ),
+        kanbanRegions: normalizeKanbanRegions(payload.kanbanRegions),
         error: null,
       })
       setLastOpenedSheetForFile(payload.workbook.id, payload.sheet.name)
@@ -1266,9 +1433,6 @@ export const useSheetStore = create<SheetState & {
         oldName,
         newName: trimmed,
       })
-      const nextRegions = state.kanbanRegions.map((region) =>
-        region.sheetName === oldName ? { ...region, sheetName: trimmed } : region
-      )
       set({
         workbook: payload.workbook,
         sheet: payload.sheet,
@@ -1278,10 +1442,14 @@ export const useSheetStore = create<SheetState & {
         loadedWindows: [windowKey(payload.sheet.name, DEFAULT_WINDOW)],
         loadingWindows: [],
         viewportWindow: DEFAULT_WINDOW,
-        kanbanRegions: nextRegions,
+        sheetFontFamily: getPersistedSheetFontFamily(
+          payload.workbook.id,
+          payload.sheet.name
+        ),
+        kanbanRegions: normalizeKanbanRegions(payload.kanbanRegions),
         error: null,
       })
-      writePersistedKanbanRegions(state.workbook.id, nextRegions)
+      renamePersistedSheetFont(payload.workbook.id, oldName, payload.sheet.name)
       setLastOpenedSheetForFile(payload.workbook.id, payload.sheet.name)
       await get().refreshFiles()
     } catch (error) {
@@ -1297,7 +1465,6 @@ export const useSheetStore = create<SheetState & {
 
     try {
       const payload = await deleteSheetRequest(state.workbook.id, { name: sheetName })
-      const nextRegions = state.kanbanRegions.filter((region) => region.sheetName !== sheetName)
       set({
         workbook: payload.workbook,
         sheet: payload.sheet,
@@ -1310,10 +1477,14 @@ export const useSheetStore = create<SheetState & {
         loadedWindows: [windowKey(payload.sheet.name, DEFAULT_WINDOW)],
         loadingWindows: [],
         viewportWindow: DEFAULT_WINDOW,
-        kanbanRegions: nextRegions,
+        sheetFontFamily: getPersistedSheetFontFamily(
+          payload.workbook.id,
+          payload.sheet.name
+        ),
+        kanbanRegions: normalizeKanbanRegions(payload.kanbanRegions),
         error: null,
       })
-      writePersistedKanbanRegions(state.workbook.id, nextRegions)
+      deletePersistedSheetFont(state.workbook.id, sheetName)
       setLastOpenedSheetForFile(payload.workbook.id, payload.sheet.name)
       await get().refreshFiles()
     } catch (error) {
@@ -1483,6 +1654,21 @@ export const useSheetStore = create<SheetState & {
       },
       selectedRange: null,
       selectedStyle: sheetStyleFromSelection(sheet, "cell", row, col, null),
+    })
+  },
+
+  selectRow: (row) => {
+    const sheet = get().sheet
+    set({
+      selectionMode: "row",
+      selectedRow: row,
+      selectedCell: {
+        address: `${row}:${row}`,
+        value: "",
+        formula: "",
+      },
+      selectedRange: null,
+      selectedStyle: sheetStyleFromSelection(sheet, "row", row, 1, null),
     })
   },
 
@@ -1838,7 +2024,7 @@ export const useSheetStore = create<SheetState & {
     })
   },
 
-  createKanbanFromSelection: (statusCol, name) => {
+  createKanbanFromSelection: async (statusCol, name) => {
     const state = get()
     if (!state.workbook || !state.sheet || !state.selectedRange) {
       return null
@@ -1868,16 +2054,27 @@ export const useSheetStore = create<SheetState & {
       statusCol,
       titleCol: defaultKanbanTitleCol(range, statusCol),
       statusOrder: Array.from(statusValues),
+      cardColorEnabled: false,
+      cardColorByCol: defaultKanbanTitleCol(range, statusCol),
+      cardColorMap: {},
       createdAt: now,
     }
     const regions = [...state.kanbanRegions, next]
-    set({
-      kanbanRegions: regions,
-      activeWorkspaceTab: `kanban:${next.id}`,
-      error: null,
-    })
-    writePersistedKanbanRegions(state.workbook.id, regions)
-    return next
+    const previousRegions = state.kanbanRegions
+    set({ kanbanRegions: regions, activeWorkspaceTab: `kanban:${next.id}`, error: null })
+    try {
+      const savedRegions = await persistKanbanRegions(state.workbook.id, regions)
+      set({ kanbanRegions: savedRegions })
+      return savedRegions.find((region) => region.id === next.id) ?? next
+    } catch (error) {
+      set({
+        kanbanRegions: previousRegions,
+        activeWorkspaceTab: state.activeWorkspaceTab,
+        error:
+          error instanceof Error ? error.message : "Failed to save kanban view",
+      })
+      return null
+    }
   },
 
   extendKanbanRegion: async (regionId, axis, amount = 1) => {
@@ -1916,11 +2113,25 @@ export const useSheetStore = create<SheetState & {
         },
       }
     })
-    set({ kanbanRegions: regions })
-    writePersistedKanbanRegions(latest.workbook?.id ?? "", regions)
+    const workbookId = latest.workbook?.id
+    if (!workbookId) {
+      return
+    }
+    const previousRegions = latest.kanbanRegions
+    set({ kanbanRegions: regions, error: null })
+    try {
+      const savedRegions = await persistKanbanRegions(workbookId, regions)
+      set({ kanbanRegions: savedRegions })
+    } catch (error) {
+      set({
+        kanbanRegions: previousRegions,
+        error:
+          error instanceof Error ? error.message : "Failed to save kanban view",
+      })
+    }
   },
 
-  setKanbanStatusOrder: (regionId, statusOrder) => {
+  setKanbanStatusOrder: async (regionId, statusOrder) => {
     const state = get()
     if (!state.workbook) {
       return
@@ -1931,11 +2142,20 @@ export const useSheetStore = create<SheetState & {
     const regions = state.kanbanRegions.map((region) =>
       region.id === regionId ? { ...region, statusOrder: unique } : region
     )
-    set({ kanbanRegions: regions })
-    writePersistedKanbanRegions(state.workbook.id, regions)
+    set({ kanbanRegions: regions, error: null })
+    try {
+      const savedRegions = await persistKanbanRegions(state.workbook.id, regions)
+      set({ kanbanRegions: savedRegions })
+    } catch (error) {
+      set({
+        kanbanRegions: state.kanbanRegions,
+        error:
+          error instanceof Error ? error.message : "Failed to save kanban view",
+      })
+    }
   },
 
-  setKanbanTitleCol: (regionId, titleCol) => {
+  setKanbanTitleCol: async (regionId, titleCol) => {
     const state = get()
     if (!state.workbook || !state.sheet) {
       return
@@ -1949,8 +2169,62 @@ export const useSheetStore = create<SheetState & {
       }
       return { ...region, titleCol }
     })
-    set({ kanbanRegions: regions })
-    writePersistedKanbanRegions(state.workbook.id, regions)
+    set({ kanbanRegions: regions, error: null })
+    try {
+      const savedRegions = await persistKanbanRegions(state.workbook.id, regions)
+      set({ kanbanRegions: savedRegions })
+    } catch (error) {
+      set({
+        kanbanRegions: state.kanbanRegions,
+        error:
+          error instanceof Error ? error.message : "Failed to save kanban view",
+      })
+    }
+  },
+
+  setKanbanCardColorConfig: async (regionId, patch) => {
+    const state = get()
+    if (!state.workbook) {
+      return
+    }
+    const regions = state.kanbanRegions.map((region) => {
+      if (region.id !== regionId) {
+        return region
+      }
+      const nextEnabled =
+        typeof patch.cardColorEnabled === "boolean"
+          ? patch.cardColorEnabled
+          : region.cardColorEnabled
+      const requestedCol =
+        typeof patch.cardColorByCol === "number"
+          ? patch.cardColorByCol
+          : region.cardColorByCol
+      const nextColorByCol =
+        requestedCol >= region.range.colStart && requestedCol <= region.range.colEnd
+          ? requestedCol
+          : region.cardColorByCol
+      const nextColorMap =
+        patch.cardColorMap === undefined
+          ? region.cardColorMap
+          : normalizeKanbanCardColorMap(patch.cardColorMap)
+      return {
+        ...region,
+        cardColorEnabled: nextEnabled,
+        cardColorByCol: nextColorByCol,
+        cardColorMap: nextColorMap,
+      }
+    })
+    set({ kanbanRegions: regions, error: null })
+    try {
+      const savedRegions = await persistKanbanRegions(state.workbook.id, regions)
+      set({ kanbanRegions: savedRegions })
+    } catch (error) {
+      set({
+        kanbanRegions: state.kanbanRegions,
+        error:
+          error instanceof Error ? error.message : "Failed to save kanban view",
+      })
+    }
   },
 
   moveKanbanCard: async (regionId, sourceRow, targetStatus, targetIndex) => {
@@ -2055,8 +2329,17 @@ export const useSheetStore = create<SheetState & {
           }
         : item
     )
-    set({ kanbanRegions: regions })
-    writePersistedKanbanRegions(state.workbook.id, regions)
+    set({ kanbanRegions: regions, error: null })
+    try {
+      const savedRegions = await persistKanbanRegions(state.workbook.id, regions)
+      set({ kanbanRegions: savedRegions })
+    } catch (error) {
+      set({
+        kanbanRegions: state.kanbanRegions,
+        error:
+          error instanceof Error ? error.message : "Failed to save kanban view",
+      })
+    }
   },
 
   setSearch: (value) => {
@@ -2101,6 +2384,23 @@ export const useSheetStore = create<SheetState & {
     }
   },
 
+  setSheetFontFamily: (fontFamily) => {
+    const state = get()
+    const trimmed = fontFamily.trim()
+    if (!trimmed) {
+      return
+    }
+    set({ sheetFontFamily: trimmed })
+    const workbookId = state.workbook?.id
+    const sheetName = state.sheet?.name
+    if (!workbookId || !sheetName) {
+      return
+    }
+    const all = readPersistedSheetFonts()
+    const nextByWorkbook = { ...(all[workbookId] ?? {}), [sheetName]: trimmed }
+    writePersistedSheetFonts(workbookId, nextByWorkbook)
+  },
+
   setViewportWindow: (window) => {
     const state = get()
     const normalized = normalizeWindow(state.sheet, window)
@@ -2139,6 +2439,7 @@ export function resetSheetStore() {
     isLoading: false,
     error: null,
     zoom: 100,
+    sheetFontFamily: DEFAULT_SHEET_FONT_FAMILY,
     search: "",
     fileSettings: DEFAULT_FILE_SETTINGS,
     kanbanRegions: [],

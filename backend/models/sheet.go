@@ -74,6 +74,20 @@ type CellRange struct {
 	ColEnd   int `json:"colEnd"`
 }
 
+type KanbanRegion struct {
+	ID               string            `json:"id"`
+	Name             string            `json:"name"`
+	SheetName        string            `json:"sheetName"`
+	Range            CellRange         `json:"range"`
+	StatusCol        int               `json:"statusCol"`
+	TitleCol         int               `json:"titleCol"`
+	StatusOrder      []string          `json:"statusOrder"`
+	CardColorEnabled bool              `json:"cardColorEnabled"`
+	CardColorByCol   int               `json:"cardColorByCol"`
+	CardColorMap     map[string]string `json:"cardColorMap"`
+	CreatedAt        string            `json:"createdAt"`
+}
+
 type Workbook struct {
 	ID          string      `json:"id"`
 	FileName    string      `json:"fileName"`
@@ -103,13 +117,19 @@ type FileSettingsResponse struct {
 }
 
 type UploadResponse struct {
-	Workbook Workbook `json:"workbook"`
-	Sheet    Sheet    `json:"sheet"`
+	Workbook      Workbook       `json:"workbook"`
+	Sheet         Sheet          `json:"sheet"`
+	KanbanRegions []KanbanRegion `json:"kanbanRegions"`
 }
 
 type SheetResponse struct {
-	Workbook Workbook `json:"workbook"`
-	Sheet    Sheet    `json:"sheet"`
+	Workbook      Workbook       `json:"workbook"`
+	Sheet         Sheet          `json:"sheet"`
+	KanbanRegions []KanbanRegion `json:"kanbanRegions"`
+}
+
+type KanbanRegionsResponse struct {
+	KanbanRegions []KanbanRegion `json:"kanbanRegions"`
 }
 
 type FileEntry struct {

@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+} from "react"
 
 import { useSheetStore } from "@/store/sheetStore"
 import { Input } from "@/components/ui/input"
+
+const GRID_NAVIGATE_TO_CELL_EVENT = "planar:navigate-to-cell"
 
 const toColumnLabel = (index: number) => {
   let label = ""
@@ -12,6 +21,73 @@ const toColumnLabel = (index: number) => {
     value = Math.floor((value - 1) / 26)
   }
   return label
+}
+
+const toColumnNumber = (label: string) => {
+  let value = 0
+  for (const char of label.toUpperCase()) {
+    const code = char.charCodeAt(0)
+    if (code < 65 || code > 90) {
+      return null
+    }
+    value = value * 26 + (code - 64)
+  }
+  return value > 0 ? value : null
+}
+
+const parseCellRef = (raw: string) => {
+  const match = raw.trim().match(/^([A-Za-z]+)([1-9]\d*)$/)
+  if (!match) {
+    return null
+  }
+  const col = toColumnNumber(match[1])
+  const row = Number(match[2])
+  if (!col || !Number.isFinite(row) || row < 1) {
+    return null
+  }
+  return {
+    row,
+    col,
+  }
+}
+
+const parseCellAddressOrRange = (raw: string) => {
+  const trimmed = raw.trim()
+  if (!trimmed) {
+    return null
+  }
+  const [leftRaw, rightRaw, extra] = trimmed.split(":")
+  if (extra !== undefined) {
+    return null
+  }
+  const left = parseCellRef(leftRaw)
+  if (!left) {
+    return null
+  }
+  if (!rightRaw) {
+    return {
+      rowStart: left.row,
+      rowEnd: left.row,
+      colStart: left.col,
+      colEnd: left.col,
+      address: `${toColumnLabel(left.col)}${left.row}`,
+    }
+  }
+  const right = parseCellRef(rightRaw)
+  if (!right) {
+    return null
+  }
+  const rowStart = Math.min(left.row, right.row)
+  const rowEnd = Math.max(left.row, right.row)
+  const colStart = Math.min(left.col, right.col)
+  const colEnd = Math.max(left.col, right.col)
+  return {
+    rowStart,
+    rowEnd,
+    colStart,
+    colEnd,
+    address: `${toColumnLabel(colStart)}${rowStart}:${toColumnLabel(colEnd)}${rowEnd}`,
+  }
 }
 
 export function CellInspector() {
@@ -48,6 +124,9 @@ export function CellInspector() {
     }
     if (selectionMode === "column") {
       return `Column ${selectedCell.address} selected`
+    }
+    if (selectionMode === "row") {
+      return `Row ${selectedCell.address} selected`
     }
     if (isMultiCellSelection && selectedRange) {
       const cellCount =
@@ -108,11 +187,64 @@ export function CellInspector() {
     return selectedCell.address
   }, [isMultiCellSelection, selectedCell.address, selectedRange])
 
+  const [draftAddress, setDraftAddress] = useState(selectedLabel)
+
+  useEffect(() => {
+    setDraftAddress(selectedLabel)
+  }, [selectedLabel])
+
+  const commitAddress = useCallback(() => {
+    const parsed = parseCellAddressOrRange(draftAddress)
+    if (!parsed) {
+      setDraftAddress(selectedLabel)
+      return
+    }
+    setDraftAddress(parsed.address)
+    if (typeof window === "undefined") {
+      return
+    }
+    window.dispatchEvent(
+      new CustomEvent(GRID_NAVIGATE_TO_CELL_EVENT, {
+        detail: {
+          rowStart: parsed.rowStart,
+          rowEnd: parsed.rowEnd,
+          colStart: parsed.colStart,
+          colEnd: parsed.colEnd,
+        },
+      })
+    )
+  }, [draftAddress, selectedLabel])
+
+  const handleAddressKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      event.stopPropagation()
+      if (event.key === "Enter") {
+        event.preventDefault()
+        commitAddress()
+        return
+      }
+      if (event.key === "Escape") {
+        event.preventDefault()
+        setDraftAddress(selectedLabel)
+      }
+    },
+    [commitAddress, selectedLabel]
+  )
+
+  const handleAddressChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setDraftAddress(event.target.value)
+    },
+    []
+  )
+
   return (
     <div className="flex h-fit items-center border-b border-border bg-card">
       <Input
-        value={selectedLabel}
-        readOnly
+        value={draftAddress}
+        onChange={handleAddressChange}
+        onBlur={commitAddress}
+        onKeyDown={handleAddressKeyDown}
         className="w-28 rounded-none border-none bg-transparent text-center font-mono focus-visible:ring-0 focus-visible:outline-0"
       />
       <Input
