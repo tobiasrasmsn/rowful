@@ -1,16 +1,22 @@
 package handlers
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	"github.com/xuri/excelize/v2"
 
 	"planar/cache"
 	"planar/models"
+	"planar/parser"
 	"planar/storage"
 )
 
@@ -27,9 +33,73 @@ type updateFileSettingsRequest struct {
 	Settings models.FileSettings `json:"settings"`
 }
 
+type createFileRequest struct {
+	Name string `json:"name"`
+}
+
 func NewFilesHandler(cacheStore *cache.Store, storageStore *storage.Store) FilesHandler {
 	initEmailDispatcher()
 	return FilesHandler{cache: cacheStore, storage: storageStore}
+}
+
+func (h FilesHandler) Create(w http.ResponseWriter, r *http.Request) {
+	user, ok := CurrentUser(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, models.ErrorResponse{Error: "authentication required"})
+		return
+	}
+
+	var req createFileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid JSON body"})
+		return
+	}
+
+	fileName := strings.TrimSpace(req.Name)
+	if fileName == "" {
+		fileName = "Untitled"
+	}
+	if !strings.HasSuffix(strings.ToLower(fileName), ".xlsx") {
+		fileName += ".xlsx"
+	}
+
+	xlsx := excelize.NewFile()
+	buffer, err := xlsx.WriteToBuffer()
+	_ = xlsx.Close()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to initialize workbook"})
+		return
+	}
+
+	id := uuid.NewString()
+	rawHash := sha256.Sum256([]byte(id))
+	fileHash := storage.ScopeFileHash(user.ID, hex.EncodeToString(rawHash[:]))
+	fileBytes := buffer.Bytes()
+
+	sheets, err := parser.ParseWorkbook(fileBytes)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to initialize workbook"})
+		return
+	}
+
+	workbookMeta := cache.BuildWorkbookMeta(id, fileName, fileHash, sheets)
+	if err := h.storage.SaveWorkbook(user.ID, workbookMeta, sheets, ""); err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to persist workbook"})
+		return
+	}
+
+	h.cache.Put(cache.CachedWorkbook{Workbook: workbookMeta})
+	sheet, err := h.storage.GetSheetWindow(workbookMeta.ID, workbookMeta.ActiveSheet, 1, defaultInitialRowCount, 1, defaultInitialColCount)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load workbook"})
+		return
+	}
+	regions, regionsErr := h.storage.GetKanbanRegions(workbookMeta.ID)
+	if regionsErr != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load kanban regions"})
+		return
+	}
+	writeJSON(w, http.StatusOK, models.UploadResponse{Workbook: workbookMeta, Sheet: sheet, KanbanRegions: regions})
 }
 
 func (h FilesHandler) List(w http.ResponseWriter, r *http.Request) {

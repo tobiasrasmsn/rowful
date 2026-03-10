@@ -4,6 +4,7 @@ import {
   applyStyle as applyStyleRequest,
   clearFormattingRange,
   clearValuesRange,
+  createWorkbook as createWorkbookRequest,
   createSheet as createSheetRequest,
   deleteCols as deleteColsRequest,
   deleteRows as deleteRowsRequest,
@@ -87,6 +88,7 @@ type SheetState = {
   search: string
   fileSettings: FileSettings
   kanbanRegions: KanbanRegion[]
+  createWorkbook: (name?: string) => Promise<void>
   uploadFile: (file: File) => Promise<void>
   openWorkbookByID: (id: string) => Promise<void>
   loadSheet: (sheetName: string) => Promise<void>
@@ -1033,6 +1035,55 @@ export const useSheetStore = create<SheetState & {
   loadedWindows: [],
   loadingWindows: [],
   viewportWindow: DEFAULT_WINDOW,
+
+  createWorkbook: async (name) => {
+    set({ isLoading: true, error: null })
+    try {
+      const trimmedName = name?.trim()
+      const payload = await createWorkbookRequest(
+        trimmedName ? { name: trimmedName } : undefined
+      )
+      set({
+        workbook: payload.workbook,
+        sheet: payload.sheet,
+        fileSettings: DEFAULT_FILE_SETTINGS,
+        selectedSheetName: payload.sheet.name,
+        activeWorkspaceTab: payload.sheet.name,
+        selectionMode: "cell",
+        selectedRange: null,
+        selectedRow: 1,
+        selectedCol: 1,
+        selectedCell: EMPTY_CELL,
+        selectedStyle: {},
+        historyPast: [],
+        historyFuture: [],
+        loadedWindows: [windowKey(payload.sheet.name, DEFAULT_WINDOW)],
+        loadingWindows: [],
+        viewportWindow: DEFAULT_WINDOW,
+        sheetFontFamily: getPersistedSheetFontFamily(
+          payload.workbook.id,
+          payload.sheet.name
+        ),
+        kanbanRegions: normalizeKanbanRegions(payload.kanbanRegions),
+        isLoading: false,
+      })
+      setLastOpenedSheetForFile(payload.workbook.id, payload.sheet.name)
+      try {
+        const settingsPayload = await fetchFileSettings(payload.workbook.id)
+        if (get().workbook?.id === payload.workbook.id) {
+          set({ fileSettings: settingsPayload.settings })
+        }
+      } catch {
+        // keep defaults if settings are unavailable
+      }
+      await Promise.all([get().refreshFiles(), get().refreshRecentFiles()])
+    } catch (error) {
+      set({
+        isLoading: false,
+        error: error instanceof Error ? error.message : "Failed to create file",
+      })
+    }
+  },
 
   uploadFile: async (file) => {
     set({ isLoading: true, error: null })

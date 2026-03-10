@@ -410,6 +410,15 @@ export async function listFiles(): Promise<FilesResponse> {
   return parseJson<FilesResponse>(response)
 }
 
+export async function createWorkbook(payload?: { name?: string }): Promise<UploadResponse> {
+  const response = await apiFetch(`${API_BASE_URL}/api/files`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {}),
+  })
+  return parseJson<UploadResponse>(response)
+}
+
 export async function listRecentFiles(limit = 10): Promise<FilesResponse> {
   const response = await apiFetch(`${API_BASE_URL}/api/files/recent?limit=${limit}`)
   return parseJson<FilesResponse>(response)

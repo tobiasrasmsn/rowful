@@ -25,16 +25,20 @@ const formatDate = (value: string) => {
 export function FilesBrowser() {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const files = useSheetStore((state) => state.files)
+  const createWorkbook = useSheetStore((state) => state.createWorkbook)
   const uploadFile = useSheetStore((state) => state.uploadFile)
   const refreshFiles = useSheetStore((state) => state.refreshFiles)
   const renameStoredFile = useSheetStore((state) => state.renameStoredFile)
   const deleteStoredFile = useSheetStore((state) => state.deleteStoredFile)
   const navigate = useNavigate()
 
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createName, setCreateName] = useState("")
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [activeFileID, setActiveFileID] = useState("")
   const [nextName, setNextName] = useState("")
+  const [isCreating, setIsCreating] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
 
   useEffect(() => {
@@ -59,6 +63,14 @@ export function FilesBrowser() {
 
   const onImportClick = () => {
     inputRef.current?.click()
+  }
+
+  const onCreateClick = () => {
+    if (isCreating) {
+      return
+    }
+    setCreateName("")
+    setCreateOpen(true)
   }
 
   const onFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -93,9 +105,14 @@ export function FilesBrowser() {
 
         <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
           <div className="text-sm font-medium">Files</div>
-          <Button size="sm" onClick={onImportClick} disabled={isImporting}>
-            {isImporting ? "Importing..." : "Import (.xlsx)"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={onCreateClick} disabled={isCreating}>
+              {isCreating ? "Creating..." : "New File"}
+            </Button>
+            <Button size="sm" onClick={onImportClick} disabled={isImporting}>
+              {isImporting ? "Importing..." : "Import (.xlsx)"}
+            </Button>
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto">
@@ -153,6 +170,49 @@ export function FilesBrowser() {
           </table>
         </div>
       </div>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create File</DialogTitle>
+            <DialogDescription>
+              Create a blank workbook without importing an existing spreadsheet.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={createName}
+            onChange={(event) => setCreateName(event.target.value)}
+            placeholder="Untitled"
+          />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={isCreating}
+              onClick={async () => {
+                if (isCreating) {
+                  return
+                }
+                setIsCreating(true)
+                try {
+                  await createWorkbook(createName)
+                  const workbookID = useSheetStore.getState().workbook?.id
+                  if (workbookID) {
+                    navigate(`/sheet/${workbookID}`)
+                  }
+                  setCreateOpen(false)
+                } finally {
+                  setIsCreating(false)
+                }
+              }}
+            >
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent>

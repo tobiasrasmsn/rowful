@@ -80,6 +80,7 @@ func main() {
 			private.Post("/sheet/{id}/delete-rows", sheetHandler.DeleteRows)
 			private.Post("/sheet/{id}/delete-cols", sheetHandler.DeleteCols)
 			private.Get("/files", filesHandler.List)
+			private.Post("/files", filesHandler.Create)
 			private.Get("/files/recent", filesHandler.Recent)
 			private.Post("/files/{id}/open", filesHandler.Open)
 			private.Get("/files/{id}/settings", filesHandler.GetSettings)

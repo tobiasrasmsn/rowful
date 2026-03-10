@@ -3,37 +3,45 @@ package models
 import "time"
 
 type CellStyle struct {
-	FontFamily string `json:"fontFamily,omitempty"`
-	FontSize   int    `json:"fontSize,omitempty"`
-	Bold       bool   `json:"bold,omitempty"`
-	Italic     bool   `json:"italic,omitempty"`
-	Underline  bool   `json:"underline,omitempty"`
-	Strike     bool   `json:"strike,omitempty"`
-	FontColor  string `json:"fontColor,omitempty"`
-	FillColor  string `json:"fillColor,omitempty"`
-	HAlign     string `json:"hAlign,omitempty"`
-	VAlign     string `json:"vAlign,omitempty"`
-	Border     string `json:"border,omitempty"`
-	Overflow   string `json:"overflow,omitempty"`
-	WrapText   bool   `json:"wrapText,omitempty"`
-	NumFmt     string `json:"numFmt,omitempty"`
+	FontFamily   string `json:"fontFamily,omitempty"`
+	FontSize     int    `json:"fontSize,omitempty"`
+	Bold         bool   `json:"bold,omitempty"`
+	Italic       bool   `json:"italic,omitempty"`
+	Underline    bool   `json:"underline,omitempty"`
+	Strike       bool   `json:"strike,omitempty"`
+	FontColor    string `json:"fontColor,omitempty"`
+	FillColor    string `json:"fillColor,omitempty"`
+	HAlign       string `json:"hAlign,omitempty"`
+	VAlign       string `json:"vAlign,omitempty"`
+	Border       string `json:"border,omitempty"`
+	BorderTop    bool   `json:"borderTop,omitempty"`
+	BorderBottom bool   `json:"borderBottom,omitempty"`
+	BorderLeft   bool   `json:"borderLeft,omitempty"`
+	BorderRight  bool   `json:"borderRight,omitempty"`
+	Overflow     string `json:"overflow,omitempty"`
+	WrapText     bool   `json:"wrapText,omitempty"`
+	NumFmt       string `json:"numFmt,omitempty"`
 }
 
 type CellStylePatch struct {
-	FontFamily *string `json:"fontFamily,omitempty"`
-	FontSize   *int    `json:"fontSize,omitempty"`
-	Bold       *bool   `json:"bold,omitempty"`
-	Italic     *bool   `json:"italic,omitempty"`
-	Underline  *bool   `json:"underline,omitempty"`
-	Strike     *bool   `json:"strike,omitempty"`
-	FontColor  *string `json:"fontColor,omitempty"`
-	FillColor  *string `json:"fillColor,omitempty"`
-	HAlign     *string `json:"hAlign,omitempty"`
-	VAlign     *string `json:"vAlign,omitempty"`
-	Border     *string `json:"border,omitempty"`
-	Overflow   *string `json:"overflow,omitempty"`
-	WrapText   *bool   `json:"wrapText,omitempty"`
-	NumFmt     *string `json:"numFmt,omitempty"`
+	FontFamily   *string `json:"fontFamily,omitempty"`
+	FontSize     *int    `json:"fontSize,omitempty"`
+	Bold         *bool   `json:"bold,omitempty"`
+	Italic       *bool   `json:"italic,omitempty"`
+	Underline    *bool   `json:"underline,omitempty"`
+	Strike       *bool   `json:"strike,omitempty"`
+	FontColor    *string `json:"fontColor,omitempty"`
+	FillColor    *string `json:"fillColor,omitempty"`
+	HAlign       *string `json:"hAlign,omitempty"`
+	VAlign       *string `json:"vAlign,omitempty"`
+	Border       *string `json:"border,omitempty"`
+	BorderTop    *bool   `json:"borderTop,omitempty"`
+	BorderBottom *bool   `json:"borderBottom,omitempty"`
+	BorderLeft   *bool   `json:"borderLeft,omitempty"`
+	BorderRight  *bool   `json:"borderRight,omitempty"`
+	Overflow     *string `json:"overflow,omitempty"`
+	WrapText     *bool   `json:"wrapText,omitempty"`
+	NumFmt       *string `json:"numFmt,omitempty"`
 }
 
 type Cell struct {

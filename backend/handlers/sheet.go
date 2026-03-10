@@ -89,6 +89,18 @@ type saveKanbanRegionsRequest struct {
 	KanbanRegions []models.KanbanRegion `json:"kanbanRegions"`
 }
 
+func normalizeCellRange(r *models.CellRange) *models.CellRange {
+	if r == nil {
+		return nil
+	}
+	return &models.CellRange{
+		RowStart: min(r.RowStart, r.RowEnd),
+		RowEnd:   max(r.RowStart, r.RowEnd),
+		ColStart: min(r.ColStart, r.ColEnd),
+		ColEnd:   max(r.ColStart, r.ColEnd),
+	}
+}
+
 func NewSheetHandler(cacheStore *cache.Store, storageStore *storage.Store) SheetHandler {
 	return SheetHandler{cache: cacheStore, storage: storageStore}
 }
@@ -226,7 +238,7 @@ func (h SheetHandler) ApplyStyle(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "sheet is required"})
 		return
 	}
-	if err := h.storage.ApplyStylePatch(id, req.Sheet, req.Target.Mode, req.Target.Row, req.Target.Col, req.Target.Range, req.Patch); err != nil {
+	if err := h.storage.ApplyStylePatch(id, req.Sheet, req.Target.Mode, req.Target.Row, req.Target.Col, normalizeCellRange(req.Target.Range), req.Patch); err != nil {
 		h.writeStorageError(w, err, "failed to apply style")
 		return
 	}
@@ -253,7 +265,7 @@ func (h SheetHandler) ClearFormatting(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "sheet is required"})
 		return
 	}
-	if err := h.storage.ClearFormatting(id, req.Sheet, req.Target.Mode, req.Target.Row, req.Target.Col, req.Target.Range); err != nil {
+	if err := h.storage.ClearFormatting(id, req.Sheet, req.Target.Mode, req.Target.Row, req.Target.Col, normalizeCellRange(req.Target.Range)); err != nil {
 		h.writeStorageError(w, err, "failed to clear formatting")
 		return
 	}
@@ -280,7 +292,7 @@ func (h SheetHandler) ClearValues(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "sheet is required"})
 		return
 	}
-	if err := h.storage.ClearValues(id, req.Sheet, req.Target.Mode, req.Target.Row, req.Target.Col, req.Target.Range); err != nil {
+	if err := h.storage.ClearValues(id, req.Sheet, req.Target.Mode, req.Target.Row, req.Target.Col, normalizeCellRange(req.Target.Range)); err != nil {
 		h.writeStorageError(w, err, "failed to clear values")
 		return
 	}

@@ -57,6 +57,22 @@ func (s *styleResolver) Resolve(sheetName, cell string) *models.CellStyle {
 		resolved.WrapText = style.Alignment.WrapText
 	}
 
+	for _, border := range style.Border {
+		if border.Style == 0 {
+			continue
+		}
+		switch border.Type {
+		case "top":
+			resolved.BorderTop = true
+		case "bottom":
+			resolved.BorderBottom = true
+		case "left":
+			resolved.BorderLeft = true
+		case "right":
+			resolved.BorderRight = true
+		}
+	}
+
 	if style.CustomNumFmt != nil {
 		resolved.NumFmt = *style.CustomNumFmt
 	} else if style.NumFmt != 0 {

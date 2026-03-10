@@ -1189,9 +1189,13 @@ func (s *Store) ApplyStylePatch(workbookID, sheetName, mode string, row, col int
 	if err != nil {
 		return err
 	}
+	bounds := borderTargetBounds(mode, row, col, cellRange, cells)
 	for idx := range cells {
 		style := cloneStyle(cells[idx].style)
 		applyStylePatch(style, patch)
+		if patch.Border != nil {
+			applyBorderMode(style, *patch.Border, cells[idx], bounds)
+		}
 		if *style == (models.CellStyle{}) {
 			cells[idx].style = nil
 		} else {
@@ -1986,6 +1990,18 @@ func applyStylePatch(style *models.CellStyle, patch models.CellStylePatch) {
 	if patch.Border != nil {
 		style.Border = *patch.Border
 	}
+	if patch.BorderTop != nil {
+		style.BorderTop = *patch.BorderTop
+	}
+	if patch.BorderBottom != nil {
+		style.BorderBottom = *patch.BorderBottom
+	}
+	if patch.BorderLeft != nil {
+		style.BorderLeft = *patch.BorderLeft
+	}
+	if patch.BorderRight != nil {
+		style.BorderRight = *patch.BorderRight
+	}
 	if patch.Overflow != nil {
 		style.Overflow = *patch.Overflow
 	}
@@ -2003,6 +2019,65 @@ func isEmptyStoredCell(cell storedCell) bool {
 
 func cellKey(row, col int) string {
 	return fmt.Sprintf("%d:%d", row, col)
+}
+
+func borderTargetBounds(mode string, row, col int, cellRange *models.CellRange, cells []storedCell) models.CellRange {
+	switch mode {
+	case "cell", "":
+		return models.CellRange{RowStart: row, RowEnd: row, ColStart: col, ColEnd: col}
+	case "range":
+		if cellRange != nil {
+			return *cellRange
+		}
+	}
+	if len(cells) == 0 {
+		return models.CellRange{}
+	}
+	bounds := models.CellRange{
+		RowStart: cells[0].row,
+		RowEnd:   cells[0].row,
+		ColStart: cells[0].col,
+		ColEnd:   cells[0].col,
+	}
+	for _, cell := range cells[1:] {
+		bounds.RowStart = min(bounds.RowStart, cell.row)
+		bounds.RowEnd = max(bounds.RowEnd, cell.row)
+		bounds.ColStart = min(bounds.ColStart, cell.col)
+		bounds.ColEnd = max(bounds.ColEnd, cell.col)
+	}
+	return bounds
+}
+
+func applyBorderMode(style *models.CellStyle, mode string, cell storedCell, bounds models.CellRange) {
+	style.Border = ""
+
+	switch mode {
+	case "all":
+		style.BorderTop = true
+		style.BorderLeft = true
+		style.BorderBottom = cell.row == bounds.RowEnd
+		style.BorderRight = cell.col == bounds.ColEnd
+	case "outer":
+		style.BorderTop = cell.row == bounds.RowStart
+		style.BorderBottom = cell.row == bounds.RowEnd
+		style.BorderLeft = cell.col == bounds.ColStart
+		style.BorderRight = cell.col == bounds.ColEnd
+	case "inner":
+		style.BorderTop = cell.row != bounds.RowStart
+		style.BorderBottom = false
+		style.BorderLeft = cell.col != bounds.ColStart
+		style.BorderRight = false
+	case "bottom":
+		style.BorderTop = false
+		style.BorderBottom = cell.row == bounds.RowEnd
+		style.BorderLeft = false
+		style.BorderRight = false
+	case "none":
+		style.BorderTop = false
+		style.BorderBottom = false
+		style.BorderLeft = false
+		style.BorderRight = false
+	}
 }
 
 func rangeArea(cellRange models.CellRange) int {
