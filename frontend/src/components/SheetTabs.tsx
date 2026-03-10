@@ -15,6 +15,12 @@ import {
 import { Input } from "./ui/input"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs"
 import { KanbanSquareIcon, PlusSquareIcon } from "lucide-react"
+import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  ArrowDataTransferHorizontalFreeIcons,
+  ArrowRight04FreeIcons,
+  ArrowRightDoubleIcon,
+} from "@hugeicons/core-free-icons"
 
 type SheetTabsProps = {
   className?: string
@@ -172,7 +178,12 @@ export function SheetTabs({ className, compact = false }: SheetTabsProps) {
                   </TabsTrigger>
                   {sheetMeta.name === selectedSheetName &&
                   (kanbanBySheet.get(sheetMeta.name) ?? []).length > 0 ? (
-                    <div className="mx-1 flex items-end gap-1 border-x border-border/60 px-2">
+                    <div className="mx-1 flex items-end gap-1 border-r border-border/60 px-2">
+                      <HugeiconsIcon
+                        size={16}
+                        className="text-foreground/25"
+                        icon={ArrowDataTransferHorizontalFreeIcons}
+                      />
                       {(kanbanBySheet.get(sheetMeta.name) ?? []).map(
                         (region) => (
                           <TabsTrigger
@@ -195,7 +206,7 @@ export function SheetTabs({ className, compact = false }: SheetTabsProps) {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-9 gap-2 rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/35 px-5 py-1 text-sm shadow-none! data-active:-mb-px data-active:bg-card"
+                  className="h-7 gap-2 rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/35 px-5 py-1 text-sm shadow-none! data-active:-mb-px data-active:bg-card"
                   onClick={createSheet}
                 >
                   <PlusSquareIcon /> New Sheet

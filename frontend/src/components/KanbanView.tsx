@@ -203,6 +203,9 @@ export function KanbanView({ region }: KanbanViewProps) {
     (state) => state.setKanbanStatusOrder
   )
   const setKanbanTitleCol = useSheetStore((state) => state.setKanbanTitleCol)
+  const setKanbanVisibleCols = useSheetStore(
+    (state) => state.setKanbanVisibleCols
+  )
   const setKanbanCardColorConfig = useSheetStore(
     (state) => state.setKanbanCardColorConfig
   )
@@ -323,6 +326,19 @@ export function KanbanView({ region }: KanbanViewProps) {
       ),
     [region.range.colEnd, region.range.colStart]
   )
+  const visibleCols = useMemo(() => {
+    const configured = Array.isArray(region.visibleCols)
+      ? region.visibleCols.filter(
+          (col) => col >= region.range.colStart && col <= region.range.colEnd
+        )
+      : []
+    return configured.length > 0 ? configured : titleColOptions
+  }, [
+    region.range.colEnd,
+    region.range.colStart,
+    region.visibleCols,
+    titleColOptions,
+  ])
   const cardColorByCol = useMemo(() => {
     if (
       region.cardColorByCol >= region.range.colStart &&
@@ -450,11 +466,11 @@ export function KanbanView({ region }: KanbanViewProps) {
       </div>
       <div className="flex flex-col gap-2 p-4">
         {Array.from(
-          { length: region.range.colEnd - region.range.colStart + 1 },
-          (_, idx) => region.range.colStart + idx
-        ).map((col, idx) => {
+          visibleCols
+        ).map((col) => {
           const value = matrix.get(row)?.get(col) ?? ""
-          const label = labels[idx] || toColumnLabel(col)
+          const label =
+            labels[col - region.range.colStart] || toColumnLabel(col)
           const isStatus = col === region.statusCol
           return (
             <div key={`${row}:${col}`} className="mb-1.5">
@@ -529,7 +545,7 @@ export function KanbanView({ region }: KanbanViewProps) {
               <DialogHeader>
                 <DialogTitle>Kanban Settings</DialogTitle>
                 <DialogDescription>
-                  Configure card title and optional card color coding.
+                  Configure card title, visible fields, and optional card color coding.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-3">
@@ -553,6 +569,38 @@ export function KanbanView({ region }: KanbanViewProps) {
                     ))}
                   </select>
                 </label>
+                <div className="grid gap-2 rounded-md border border-border bg-muted/20 p-3">
+                  <div className="text-xs font-normal text-muted-foreground">
+                    Card fields
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {titleColOptions.map((col) => {
+                      const checked = visibleCols.includes(col)
+                      const label =
+                        labels[col - region.range.colStart] || toColumnLabel(col)
+                      return (
+                        <label
+                          key={col}
+                          className="flex items-center gap-2 rounded border border-border bg-background px-2 py-1 text-xs font-normal text-foreground"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) => {
+                              const next = event.target.checked
+                                ? [...visibleCols, col]
+                                : visibleCols.filter((value) => value !== col)
+                              void setKanbanVisibleCols(region.id, next)
+                            }}
+                          />
+                          <span>
+                            {toColumnLabel(col)} - {label}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
                 <label className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
                   <input
                     type="checkbox"

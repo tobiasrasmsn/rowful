@@ -128,6 +128,7 @@ type SheetState = {
   extendKanbanRegion: (regionId: string, axis: "rows" | "cols", amount?: number) => Promise<void>
   setKanbanStatusOrder: (regionId: string, statusOrder: string[]) => Promise<void>
   setKanbanTitleCol: (regionId: string, titleCol: number) => Promise<void>
+  setKanbanVisibleCols: (regionId: string, visibleCols: number[]) => Promise<void>
   setKanbanCardColorConfig: (
     regionId: string,
     patch: Partial<{
@@ -317,6 +318,10 @@ const normalizeKanbanCardColorMap = (
 
 const normalizeKanbanRegions = (regions: KanbanRegion[]): KanbanRegion[] =>
   regions.map((region) => {
+    const allCols = Array.from(
+      { length: region.range.colEnd - region.range.colStart + 1 },
+      (_, idx) => region.range.colStart + idx
+    )
     const safeTitleCol =
       typeof region.titleCol === "number"
         ? region.titleCol
@@ -329,6 +334,15 @@ const normalizeKanbanRegions = (regions: KanbanRegion[]): KanbanRegion[] =>
       ...region,
       titleCol: safeTitleCol,
       statusOrder: Array.isArray(region.statusOrder) ? region.statusOrder : [],
+      visibleCols: Array.isArray(region.visibleCols)
+        ? Array.from(
+            new Set(
+              region.visibleCols.filter(
+                (col) => typeof col === "number" && col >= region.range.colStart && col <= region.range.colEnd
+              )
+            )
+          )
+        : allCols,
       cardColorEnabled: Boolean(region.cardColorEnabled),
       cardColorByCol:
         safeColorByCol >= region.range.colStart && safeColorByCol <= region.range.colEnd
@@ -2054,6 +2068,10 @@ export const useSheetStore = create<SheetState & {
       statusCol,
       titleCol: defaultKanbanTitleCol(range, statusCol),
       statusOrder: Array.from(statusValues),
+      visibleCols: Array.from(
+        { length: range.colEnd - range.colStart + 1 },
+        (_, idx) => range.colStart + idx
+      ),
       cardColorEnabled: false,
       cardColorByCol: defaultKanbanTitleCol(range, statusCol),
       cardColorMap: {},
@@ -2168,6 +2186,43 @@ export const useSheetStore = create<SheetState & {
         return region
       }
       return { ...region, titleCol }
+    })
+    set({ kanbanRegions: regions, error: null })
+    try {
+      const savedRegions = await persistKanbanRegions(state.workbook.id, regions)
+      set({ kanbanRegions: savedRegions })
+    } catch (error) {
+      set({
+        kanbanRegions: state.kanbanRegions,
+        error:
+          error instanceof Error ? error.message : "Failed to save kanban view",
+      })
+    }
+  },
+
+  setKanbanVisibleCols: async (regionId, visibleCols) => {
+    const state = get()
+    if (!state.workbook) {
+      return
+    }
+    const regions = state.kanbanRegions.map((region) => {
+      if (region.id !== regionId) {
+        return region
+      }
+      const unique = Array.from(
+        new Set(
+          visibleCols.filter(
+            (col) =>
+              Number.isFinite(col) &&
+              col >= region.range.colStart &&
+              col <= region.range.colEnd
+          )
+        )
+      )
+      return {
+        ...region,
+        visibleCols: unique.length > 0 ? unique : [region.titleCol],
+      }
     })
     set({ kanbanRegions: regions, error: null })
     try {

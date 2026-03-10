@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import {
+  Editor,
   RevoGrid,
+  TextEditor,
   defineCustomElements,
   type AfterEditEvent,
   type ChangedRange,
   type ColumnDataSchemaModel,
   type ColumnRegular,
+  type EditorCtr,
+  type EditorType,
+  type Editors,
   type FocusAfterRenderEvent,
   type InitialHeaderClick,
   type PluginProviders,
@@ -35,6 +40,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 defineCustomElements()
 
@@ -148,6 +160,8 @@ const FETCH_ROW_BLOCK = 400
 const FETCH_COL_BLOCK = 32
 const CELL_UPDATE_BATCH_CONCURRENCY = 12
 const MIN_GRID_ROWS = 1000
+const DEFAULT_KANBAN_STATUS = "Unassigned"
+const CUSTOM_KANBAN_STATUS_OPTION = "__planar_custom_status__"
 
 const toColumnLabel = (index: number) => {
   let label = ""
@@ -415,7 +429,10 @@ const applySheetRowsToPreparedGridData = (
 const buildColumns = (
   preparedGridData: PreparedGridData,
   manualColumnSizes: ColumnSizeMap,
-  cellPropertiesResolver: (row: number, col: number) => { style: GridCellStyle }
+  cellPropertiesResolver: (row: number, col: number) => { style: GridCellStyle },
+  isKanbanStatusCell: (row: number, col: number) => boolean,
+  statusColumnIndexes: Set<number>,
+  statusCellEditor: EditorCtr
 ): ColumnRegular[] =>
   preparedGridData.columnLabels.map((label, idx) => {
     const col = idx + 1
@@ -424,10 +441,20 @@ const buildColumns = (
       prop: String(col),
       size: manualColumnSizes[col] ?? DEFAULT_COLUMN_WIDTH,
       sortable: false,
+      editor: statusColumnIndexes.has(col) ? statusCellEditor : undefined,
       cellTemplate: (_createElement, schema: ColumnDataSchemaModel) => {
+        const row = schema.rowIndex + 1
         const prepared = preparedGridData.cellMatrix
-          .get(schema.rowIndex + 1)
+          .get(row)
           ?.get(col)
+        const rawValue =
+          prepared?.value ??
+          (schema.value === undefined || schema.value === null
+            ? ""
+            : String(schema.value))
+        if (isKanbanStatusCell(row, col) && !rawValue.trim()) {
+          return DEFAULT_KANBAN_STATUS
+        }
         if (prepared?.previewValue !== undefined) {
           return prepared.previewValue
         }
@@ -749,6 +776,49 @@ const areRangesEqual = (
   )
 }
 
+const getKanbanStatusRegionsForCell = (
+  regions: KanbanRegion[],
+  row: number,
+  col: number
+) =>
+  regions.filter(
+    (region) =>
+      col === region.statusCol &&
+      row > region.range.rowStart &&
+      row <= region.range.rowEnd
+  )
+
+const normalizeKanbanStatusValue = (value: string) => {
+  const trimmed = value.trim()
+  return trimmed || DEFAULT_KANBAN_STATUS
+}
+
+const collectKanbanStatusOptions = (
+  preparedGridData: PreparedGridData | null,
+  regions: KanbanRegion[]
+) => {
+  const values = new Set<string>([DEFAULT_KANBAN_STATUS])
+
+  for (const region of regions) {
+    for (const status of region.statusOrder ?? []) {
+      const trimmed = status.trim()
+      if (trimmed) {
+        values.add(trimmed)
+      }
+    }
+    if (!preparedGridData) {
+      continue
+    }
+    for (let row = region.range.rowStart + 1; row <= region.range.rowEnd; row += 1) {
+      const raw =
+        preparedGridData.cellMatrix.get(row)?.get(region.statusCol)?.value ?? ""
+      values.add(normalizeKanbanStatusValue(raw))
+    }
+  }
+
+  return Array.from(values)
+}
+
 const EMAIL_PATTERN = /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i
 
 const findFirstEmailInRow = (
@@ -1035,6 +1105,10 @@ export function Grid() {
   const kanbanRegionsForSheetRef = useRef<KanbanRegion[]>([])
   const gridRowCount = sheet ? getGridRowCount(sheet.maxRow) : MIN_GRID_ROWS
   const gridColCount = sheet ? getGridColCount(sheet.maxCol) : MIN_GRID_COLS
+  const statusColumnIndexes = useMemo(
+    () => new Set(kanbanRegionsForSheet.map((region) => region.statusCol)),
+    [kanbanRegionsForSheet]
+  )
 
   const applyViewport = useCallback(
     (viewport: { visible: ViewportWindow; fetch: ViewportWindow }) => {
@@ -1192,6 +1266,258 @@ export function Grid() {
     kanbanRegionsForSheetRef.current = kanbanRegionsForSheet
   }, [kanbanRegionsForSheet])
 
+  const isKanbanStatusCell = useCallback((row: number, col: number) => {
+    return (
+      getKanbanStatusRegionsForCell(
+        kanbanRegionsForSheetRef.current,
+        row,
+        col
+      ).length > 0
+    )
+  }, [])
+
+  const commitGridCellValue = useCallback(
+    async (row: number, col: number, value: string) => {
+      const nextValue = isKanbanStatusCell(row, col)
+        ? normalizeKanbanStatusValue(value)
+        : value
+      await updateCell(row, col, nextValue)
+    },
+    [isKanbanStatusCell, updateCell]
+  )
+
+  const getSelectionBounds = useCallback(() => {
+    if (selectedRange) {
+      return selectedRange
+    }
+    if (selectionMode === "sheet") {
+      return {
+        rowStart: 1,
+        rowEnd: sheet?.maxRow ?? 1,
+        colStart: 1,
+        colEnd: sheet?.maxCol ?? 1,
+      }
+    }
+    if (selectionMode === "row") {
+      return {
+        rowStart: selectedRow,
+        rowEnd: selectedRow,
+        colStart: 1,
+        colEnd: sheet?.maxCol ?? 1,
+      }
+    }
+    if (selectionMode === "column") {
+      return {
+        rowStart: 1,
+        rowEnd: sheet?.maxRow ?? 1,
+        colStart: selectedCol,
+        colEnd: selectedCol,
+      }
+    }
+    return {
+      rowStart: selectedRow,
+      rowEnd: selectedRow,
+      colStart: selectedCol,
+      colEnd: selectedCol,
+    }
+  }, [selectedCol, selectedRange, selectedRow, selectionMode, sheet?.maxCol, sheet?.maxRow])
+
+  const clearKanbanAwareSelection = useCallback(async () => {
+    const bounds = getSelectionBounds()
+    const statusCells: Array<{ row: number; col: number }> = []
+
+    for (const region of kanbanRegionsForSheetRef.current) {
+      if (
+        region.statusCol < bounds.colStart ||
+        region.statusCol > bounds.colEnd
+      ) {
+        continue
+      }
+      const rowStart = Math.max(bounds.rowStart, region.range.rowStart + 1)
+      const rowEnd = Math.min(bounds.rowEnd, region.range.rowEnd)
+      for (let row = rowStart; row <= rowEnd; row += 1) {
+        statusCells.push({ row, col: region.statusCol })
+      }
+    }
+
+    await clearSelectedValues()
+    if (statusCells.length === 0) {
+      return
+    }
+
+    await runCellUpdateBatch(
+      statusCells.map(({ row, col }) => () =>
+        commitGridCellValue(row, col, "")
+      )
+    )
+  }, [clearSelectedValues, commitGridCellValue, getSelectionBounds])
+
+  const statusCellEditor = useMemo(() => {
+    const KanbanStatusEditor = ({
+      rowIndex,
+      prop,
+      val,
+      save,
+      close,
+    }: EditorType) => {
+      const col = parseColNumber(prop)
+      const row = typeof rowIndex === "number" ? rowIndex + 1 : null
+      const initialValue = normalizeKanbanStatusValue(
+        val === undefined || val === null ? "" : String(val)
+      )
+      const [mode, setMode] = useState<"select" | "custom">("select")
+      const [selectOpen, setSelectOpen] = useState(true)
+      const [customValue, setCustomValue] = useState(initialValue)
+      const inputRef = useRef<HTMLInputElement | null>(null)
+      const customModePendingRef = useRef(false)
+      const options = useMemo(
+        () => {
+          const regions =
+            row && col
+              ? getKanbanStatusRegionsForCell(
+                  kanbanRegionsForSheetRef.current,
+                  row,
+                  col
+                )
+              : []
+          return collectKanbanStatusOptions(
+            preparedGridDataRef.current,
+            regions
+          ).sort((a, b) => {
+            if (a === DEFAULT_KANBAN_STATUS) {
+              return -1
+            }
+            if (b === DEFAULT_KANBAN_STATUS) {
+              return 1
+            }
+            return a.localeCompare(b)
+          })
+        },
+        [col, row]
+      )
+
+      useEffect(() => {
+        if (mode !== "custom") {
+          return
+        }
+        window.requestAnimationFrame(() => {
+          inputRef.current?.focus()
+          inputRef.current?.select()
+        })
+      }, [mode])
+
+      const submitCustomValue = () => {
+        save(normalizeKanbanStatusValue(customValue), false)
+      }
+
+      return mode === "custom" ? (
+        <Input
+          ref={inputRef}
+          className="h-full rounded-none border-0 px-2 shadow-none focus-visible:ring-0"
+          value={customValue}
+          onChange={(event) => {
+            setCustomValue(event.target.value)
+          }}
+          onBlur={() => {
+            submitCustomValue()
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === "Tab") {
+              event.preventDefault()
+              submitCustomValue()
+              return
+            }
+            if (event.key === "Escape") {
+              event.preventDefault()
+              close(false)
+            }
+          }}
+        />
+      ) : (
+        <Select
+          open={selectOpen}
+          value={initialValue}
+          onValueChange={(value) => {
+            if (value === CUSTOM_KANBAN_STATUS_OPTION) {
+              customModePendingRef.current = true
+              setMode("custom")
+              setSelectOpen(false)
+              return
+            }
+            save(normalizeKanbanStatusValue(value), false)
+          }}
+          onOpenChange={(open) => {
+            setSelectOpen(open)
+            if (!open) {
+              if (customModePendingRef.current) {
+                customModePendingRef.current = false
+                return
+              }
+              close(false)
+            }
+          }}
+        >
+          <SelectTrigger
+            autoFocus
+            className="h-full w-full rounded-none border-0 px-2 shadow-none focus-visible:ring-0"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault()
+                close(false)
+              }
+            }}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent
+            align="start"
+            className="w-56"
+            onCloseAutoFocus={(event) => {
+              event.preventDefault()
+            }}
+          >
+            {options.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+            <SelectItem value={CUSTOM_KANBAN_STATUS_OPTION}>
+              Custom status...
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      )
+    }
+
+    const dropdownEditor = Editor(KanbanStatusEditor)
+    const editor: EditorCtr = (column, save, close) => {
+      const col = parseColNumber(column.prop)
+      const row =
+        typeof column.rowIndex === "number" ? column.rowIndex + 1 : null
+      if (
+        col &&
+        row &&
+        getKanbanStatusRegionsForCell(
+          kanbanRegionsForSheetRef.current,
+          row,
+          col
+        ).length > 0
+      ) {
+        return dropdownEditor(column, save, close)
+      }
+      return new TextEditor(column, save)
+    }
+    return editor
+  }, [])
+
+  const gridEditors = useMemo(
+    () =>
+      ({
+        "planar-status-editor": statusCellEditor,
+      }) satisfies Editors,
+    [statusCellEditor]
+  )
+
   const cellPropertiesResolver = useCallback(
     (row: number, col: number) => {
       if (!preparedGridData) {
@@ -1216,9 +1542,19 @@ export function Grid() {
     return buildColumns(
       preparedGridData,
       manualColumnSizes,
-      cellPropertiesResolver
+      cellPropertiesResolver,
+      isKanbanStatusCell,
+      statusColumnIndexes,
+      statusCellEditor
     )
-  }, [cellPropertiesResolver, manualColumnSizes, preparedGridData])
+  }, [
+    cellPropertiesResolver,
+    isKanbanStatusCell,
+    manualColumnSizes,
+    preparedGridData,
+    statusCellEditor,
+    statusColumnIndexes,
+  ])
 
   const syncSelection = useCallback(
     (range: RangeArea | null) => {
@@ -1484,7 +1820,7 @@ export function Grid() {
       handleSelectAll()
     }
     const handleClearRegionEvent = () => {
-      void clearSelectedValues()
+      void clearKanbanAwareSelection()
     }
     const handleHeaderClickEvent = (event: Event) => {
       handleHeaderClick(
@@ -1510,7 +1846,7 @@ export function Grid() {
       }
       if (original.key === "Backspace" || original.key === "Delete") {
         original.preventDefault()
-        void clearSelectedValues()
+        void clearKanbanAwareSelection()
         return
       }
       const isAccel = original.metaKey || original.ctrlKey
@@ -1592,7 +1928,7 @@ export function Grid() {
       )
     }
   }, [
-    clearSelectedValues,
+    clearKanbanAwareSelection,
     extendKanbanDialogOpen,
     handleHeaderClick,
     handleNavigateToCell,
@@ -1618,9 +1954,9 @@ export function Grid() {
         detail.val === undefined || detail.val === null
           ? ""
           : String(detail.val)
-      void updateCell(detail.rowIndex + 1, col, value)
+      void commitGridCellValue(detail.rowIndex + 1, col, value)
     },
-    [updateCell]
+    [commitGridCellValue]
   )
 
   const handleAfterColumnResize = useCallback(
@@ -1740,12 +2076,12 @@ export function Grid() {
           const targetRow = row + rowOffset
           const targetCol = col + colOffset
           const nextValue = cell.formula || cell.value || ""
-          tasks.push(() => updateCell(targetRow, targetCol, nextValue))
+          tasks.push(() => commitGridCellValue(targetRow, targetCol, nextValue))
         }
       }
       await runCellUpdateBatch(tasks)
     },
-    [updateCell]
+    [commitGridCellValue]
   )
 
   const handlePasteAt = useCallback(
@@ -1851,7 +2187,7 @@ export function Grid() {
         for (let col = source.colStart; col <= source.colEnd; col += 1) {
           const targetRow = row
           const targetCol = col
-          clearTasks.push(() => updateCell(targetRow, targetCol, ""))
+          clearTasks.push(() => commitGridCellValue(targetRow, targetCol, ""))
         }
       }
       await runCellUpdateBatch(clearTasks)
@@ -1875,7 +2211,7 @@ export function Grid() {
         "rgRow"
       )
     },
-    [applyClipboardPayload, preparedGridData, setSelectedRange, updateCell]
+    [applyClipboardPayload, commitGridCellValue, preparedGridData, setSelectedRange]
   )
 
   useEffect(() => {
@@ -2032,6 +2368,48 @@ export function Grid() {
     },
     [activeSnippetField, sendEmailMessage.length, sendEmailSubject.length]
   )
+
+  const handleExtendKanban = useCallback(async () => {
+    if (!extendKanbanRegionId) {
+      return
+    }
+
+    const parsedAmount = Number(extendKanbanAmount)
+    const step = Number.isFinite(parsedAmount) ? Math.floor(parsedAmount) : NaN
+    if (!Number.isInteger(step) || step < 1) {
+      toast.error("Amount must be a whole number greater than 0.")
+      return
+    }
+
+    const region = kanbanRegionsForSheetRef.current.find(
+      (item) => item.id === extendKanbanRegionId
+    )
+    if (!region) {
+      return
+    }
+
+    const previousRowEnd = region.range.rowEnd
+    const statusCol = region.statusCol
+
+    await extendKanbanRegion(extendKanbanRegionId, extendKanbanAxis, step)
+
+    if (extendKanbanAxis === "rows") {
+      await runCellUpdateBatch(
+        Array.from({ length: step }, (_, index) => {
+          const row = previousRowEnd + index + 1
+          return () => commitGridCellValue(row, statusCol, DEFAULT_KANBAN_STATUS)
+        })
+      )
+    }
+
+    setExtendKanbanDialogOpen(false)
+  }, [
+    commitGridCellValue,
+    extendKanbanAmount,
+    extendKanbanAxis,
+    extendKanbanRegion,
+    extendKanbanRegionId,
+  ])
 
   useEffect(() => {
     const onWindowPointerMove = (event: PointerEvent) => {
@@ -2222,6 +2600,7 @@ export function Grid() {
               range
               applyOnClose
               columns={columns}
+              editors={gridEditors}
               source={preparedGridData.source}
               rowSize={rowSize}
               onAftercolumnresize={handleAfterColumnResize}
@@ -2408,23 +2787,7 @@ export function Grid() {
             </Button>
             <Button
               onClick={() => {
-                if (!extendKanbanRegionId) {
-                  return
-                }
-                const parsedAmount = Number(extendKanbanAmount)
-                const step = Number.isFinite(parsedAmount)
-                  ? Math.floor(parsedAmount)
-                  : NaN
-                if (!Number.isInteger(step) || step < 1) {
-                  toast.error("Amount must be a whole number greater than 0.")
-                  return
-                }
-                void extendKanbanRegion(
-                  extendKanbanRegionId,
-                  extendKanbanAxis,
-                  step
-                )
-                setExtendKanbanDialogOpen(false)
+                void handleExtendKanban()
               }}
               disabled={!extendKanbanRegionId}
             >
