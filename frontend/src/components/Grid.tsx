@@ -10,6 +10,7 @@ import {
   type ColumnDataSchemaModel,
   type ColumnRegular,
   type EditorCtr,
+  type EditorCtrCallable,
   type EditorType,
   type Editors,
   type FocusAfterRenderEvent,
@@ -1354,13 +1355,13 @@ export function Grid() {
 
   const statusCellEditor = useMemo(() => {
     const KanbanStatusEditor = ({
+      column,
       rowIndex,
-      prop,
       val,
       save,
       close,
     }: EditorType) => {
-      const col = parseColNumber(prop)
+      const col = parseColNumber(column.prop)
       const row = typeof rowIndex === "number" ? rowIndex + 1 : null
       const initialValue = normalizeKanbanStatusValue(
         val === undefined || val === null ? "" : String(val)
@@ -1489,7 +1490,7 @@ export function Grid() {
       )
     }
 
-    const dropdownEditor = Editor(KanbanStatusEditor)
+    const dropdownEditor = Editor(KanbanStatusEditor) as EditorCtrCallable
     const editor: EditorCtr = (column, save, close) => {
       const col = parseColNumber(column.prop)
       const row =

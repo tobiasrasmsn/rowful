@@ -16,11 +16,7 @@ import { Input } from "./ui/input"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs"
 import { KanbanSquareIcon, PlusSquareIcon } from "lucide-react"
 import { HugeiconsIcon } from "@hugeicons/react"
-import {
-  ArrowDataTransferHorizontalFreeIcons,
-  ArrowRight04FreeIcons,
-  ArrowRightDoubleIcon,
-} from "@hugeicons/core-free-icons"
+import { ArrowDataTransferHorizontalFreeIcons } from "@hugeicons/core-free-icons"
 
 type SheetTabsProps = {
   className?: string
