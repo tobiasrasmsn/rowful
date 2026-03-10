@@ -174,7 +174,7 @@ export function SheetTabs({ className, compact = false }: SheetTabsProps) {
                   </TabsTrigger>
                   {sheetMeta.name === selectedSheetName &&
                   (kanbanBySheet.get(sheetMeta.name) ?? []).length > 0 ? (
-                    <div className="mx-1 flex items-end gap-1 border-r border-border/60 px-2">
+                    <div className="mx-1 flex items-end gap-1 border-r border-border/60 pr-2">
                       <HugeiconsIcon
                         size={16}
                         className="text-foreground/25"

@@ -190,6 +190,13 @@ const hasMultiCellRange = (range: CellRange | null) => {
   return range.rowStart !== range.rowEnd || range.colStart !== range.colEnd
 }
 
+const normalizeCellRange = (range: CellRange): CellRange => ({
+  rowStart: Math.min(range.rowStart, range.rowEnd),
+  rowEnd: Math.max(range.rowStart, range.rowEnd),
+  colStart: Math.min(range.colStart, range.colEnd),
+  colEnd: Math.max(range.colStart, range.colEnd),
+})
+
 const formatPatch = (kind: string): Partial<CellStyle> => {
   switch (kind) {
     case "number":
@@ -677,7 +684,7 @@ const getSelectionTarget = (state: {
     return { mode: "column", col: state.selectedCol }
   }
   if (hasMultiCellRange(state.selectedRange) && state.selectedRange) {
-    return { mode: "range", range: state.selectedRange }
+    return { mode: "range", range: normalizeCellRange(state.selectedRange) }
   }
   return { mode: "cell", row: state.selectedRow, col: state.selectedCol }
 }
@@ -2026,14 +2033,15 @@ export const useSheetStore = create<SheetState & {
 
   setSelectedRange: (range) => {
     const state = get()
+    const normalizedRange = range ? normalizeCellRange(range) : null
     set({
-      selectedRange: range,
+      selectedRange: normalizedRange,
       selectedStyle: sheetStyleFromSelection(
         state.sheet,
         state.selectionMode,
         state.selectedRow,
         state.selectedCol,
-        range
+        normalizedRange
       ),
     })
   },

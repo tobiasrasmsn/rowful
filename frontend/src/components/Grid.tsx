@@ -430,7 +430,10 @@ const applySheetRowsToPreparedGridData = (
 const buildColumns = (
   preparedGridData: PreparedGridData,
   manualColumnSizes: ColumnSizeMap,
-  cellPropertiesResolver: (row: number, col: number) => { style: GridCellStyle },
+  cellPropertiesResolver: (
+    row: number,
+    col: number
+  ) => { style: GridCellStyle },
   isKanbanStatusCell: (row: number, col: number) => boolean,
   statusColumnIndexes: Set<number>,
   statusCellEditor: EditorCtr
@@ -445,9 +448,7 @@ const buildColumns = (
       editor: statusColumnIndexes.has(col) ? statusCellEditor : undefined,
       cellTemplate: (_createElement, schema: ColumnDataSchemaModel) => {
         const row = schema.rowIndex + 1
-        const prepared = preparedGridData.cellMatrix
-          .get(row)
-          ?.get(col)
+        const prepared = preparedGridData.cellMatrix.get(row)?.get(col)
         const rawValue =
           prepared?.value ??
           (schema.value === undefined || schema.value === null
@@ -810,7 +811,11 @@ const collectKanbanStatusOptions = (
     if (!preparedGridData) {
       continue
     }
-    for (let row = region.range.rowStart + 1; row <= region.range.rowEnd; row += 1) {
+    for (
+      let row = region.range.rowStart + 1;
+      row <= region.range.rowEnd;
+      row += 1
+    ) {
       const raw =
         preparedGridData.cellMatrix.get(row)?.get(region.statusCol)?.value ?? ""
       values.add(normalizeKanbanStatusValue(raw))
@@ -1208,7 +1213,14 @@ export function Grid() {
         colCount: 1,
       }
     },
-    [selectedCol, selectedRange, selectedRow, selectionMode, sheet?.maxCol, sheet?.maxRow]
+    [
+      selectedCol,
+      selectedRange,
+      selectedRow,
+      selectionMode,
+      sheet?.maxCol,
+      sheet?.maxRow,
+    ]
   )
 
   useEffect(() => {
@@ -1269,11 +1281,8 @@ export function Grid() {
 
   const isKanbanStatusCell = useCallback((row: number, col: number) => {
     return (
-      getKanbanStatusRegionsForCell(
-        kanbanRegionsForSheetRef.current,
-        row,
-        col
-      ).length > 0
+      getKanbanStatusRegionsForCell(kanbanRegionsForSheetRef.current, row, col)
+        .length > 0
     )
   }, [])
 
@@ -1321,7 +1330,14 @@ export function Grid() {
       colStart: selectedCol,
       colEnd: selectedCol,
     }
-  }, [selectedCol, selectedRange, selectedRow, selectionMode, sheet?.maxCol, sheet?.maxRow])
+  }, [
+    selectedCol,
+    selectedRange,
+    selectedRow,
+    selectionMode,
+    sheet?.maxCol,
+    sheet?.maxRow,
+  ])
 
   const clearKanbanAwareSelection = useCallback(async () => {
     const bounds = getSelectionBounds()
@@ -1347,8 +1363,10 @@ export function Grid() {
     }
 
     await runCellUpdateBatch(
-      statusCells.map(({ row, col }) => () =>
-        commitGridCellValue(row, col, "")
+      statusCells.map(
+        ({ row, col }) =>
+          () =>
+            commitGridCellValue(row, col, "")
       )
     )
   }, [clearSelectedValues, commitGridCellValue, getSelectionBounds])
@@ -1371,31 +1389,28 @@ export function Grid() {
       const [customValue, setCustomValue] = useState(initialValue)
       const inputRef = useRef<HTMLInputElement | null>(null)
       const customModePendingRef = useRef(false)
-      const options = useMemo(
-        () => {
-          const regions =
-            row && col
-              ? getKanbanStatusRegionsForCell(
-                  kanbanRegionsForSheetRef.current,
-                  row,
-                  col
-                )
-              : []
-          return collectKanbanStatusOptions(
-            preparedGridDataRef.current,
-            regions
-          ).sort((a, b) => {
-            if (a === DEFAULT_KANBAN_STATUS) {
-              return -1
-            }
-            if (b === DEFAULT_KANBAN_STATUS) {
-              return 1
-            }
-            return a.localeCompare(b)
-          })
-        },
-        [col, row]
-      )
+      const options = useMemo(() => {
+        const regions =
+          row && col
+            ? getKanbanStatusRegionsForCell(
+                kanbanRegionsForSheetRef.current,
+                row,
+                col
+              )
+            : []
+        return collectKanbanStatusOptions(
+          preparedGridDataRef.current,
+          regions
+        ).sort((a, b) => {
+          if (a === DEFAULT_KANBAN_STATUS) {
+            return -1
+          }
+          if (b === DEFAULT_KANBAN_STATUS) {
+            return 1
+          }
+          return a.localeCompare(b)
+        })
+      }, [col, row])
 
       useEffect(() => {
         if (mode !== "custom") {
@@ -1757,8 +1772,10 @@ export function Grid() {
       }
       const maxRow = Math.max(gridRowCount, 1)
       const maxCol = Math.max(gridColCount, 1)
-      const rowEnd = Number.isFinite(rowEndRaw) && rowEndRaw >= 1 ? rowEndRaw : rowStart
-      const colEnd = Number.isFinite(colEndRaw) && colEndRaw >= 1 ? colEndRaw : colStart
+      const rowEnd =
+        Number.isFinite(rowEndRaw) && rowEndRaw >= 1 ? rowEndRaw : rowStart
+      const colEnd =
+        Number.isFinite(colEndRaw) && colEndRaw >= 1 ? colEndRaw : colStart
       const boundedRowStart = Math.min(rowStart, maxRow)
       const boundedRowEnd = Math.min(rowEnd, maxRow)
       const boundedColStart = Math.min(colStart, maxCol)
@@ -2212,7 +2229,12 @@ export function Grid() {
         "rgRow"
       )
     },
-    [applyClipboardPayload, commitGridCellValue, preparedGridData, setSelectedRange]
+    [
+      applyClipboardPayload,
+      commitGridCellValue,
+      preparedGridData,
+      setSelectedRange,
+    ]
   )
 
   useEffect(() => {
@@ -2398,7 +2420,8 @@ export function Grid() {
       await runCellUpdateBatch(
         Array.from({ length: step }, (_, index) => {
           const row = previousRowEnd + index + 1
-          return () => commitGridCellValue(row, statusCol, DEFAULT_KANBAN_STATUS)
+          return () =>
+            commitGridCellValue(row, statusCol, DEFAULT_KANBAN_STATUS)
         })
       )
     }

@@ -10,6 +10,10 @@ export type CellStyle = {
   hAlign?: string
   vAlign?: string
   border?: string
+  borderTop?: boolean
+  borderBottom?: boolean
+  borderLeft?: boolean
+  borderRight?: boolean
   overflow?: string
   wrapText?: boolean
   numFmt?: string
