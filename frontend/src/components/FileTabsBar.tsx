@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 
 import { useSheetStore } from "@/store/sheetStore"
+import { useAuthStore } from "@/store/authStore"
 import { buildRenamedFileName, getDisplayFileName } from "@/lib/fileName"
 import { Button } from "@/components/ui/button"
 import {
@@ -19,6 +20,8 @@ export function FileTabsBar() {
   const workbook = useSheetStore((state) => state.workbook)
   const isLoading = useSheetStore((state) => state.isLoading)
   const renameStoredFile = useSheetStore((state) => state.renameStoredFile)
+  const user = useAuthStore((state) => state.user)
+  const logout = useAuthStore((state) => state.logout)
   const location = useLocation()
   const navigate = useNavigate()
   const [renameOpen, setRenameOpen] = useState(false)
@@ -26,6 +29,7 @@ export function FileTabsBar() {
 
   const isFilesPage = location.pathname.startsWith("/files")
   const isDomainsPage = location.pathname.startsWith("/domains")
+  const isAccessPage = location.pathname.startsWith("/admin/access")
   const currentFileName = workbook
     ? getDisplayFileName(workbook.fileName)
     : "No file selected"
@@ -61,19 +65,44 @@ export function FileTabsBar() {
         ) : null}
 
         <div className="flex items-center gap-2">
-          <Button
-            variant={isDomainsPage ? "secondary" : "outline"}
-            size="sm"
-            onClick={() => navigate("/domains")}
-          >
-            Domains
-          </Button>
+          {user?.isAdmin ? (
+            <Button
+              variant={isAccessPage ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => navigate("/admin/access")}
+            >
+              Access
+            </Button>
+          ) : null}
+          {user?.isAdmin ? (
+            <Button
+              variant={isDomainsPage ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => navigate("/domains")}
+            >
+              Domains
+            </Button>
+          ) : null}
           <Button
             variant={isFilesPage ? "secondary" : "outline"}
             size="sm"
             onClick={() => navigate("/files")}
           >
             Browse Files
+          </Button>
+          <div className="hidden text-right text-xs text-muted-foreground sm:block">
+            <div className="font-medium text-foreground">{user?.name ?? user?.email}</div>
+            <div>{user?.email}</div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              await logout()
+              navigate("/login", { replace: true })
+            }}
+          >
+            Sign out
           </Button>
         </div>
       </div>

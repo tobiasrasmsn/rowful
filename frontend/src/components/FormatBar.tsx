@@ -39,7 +39,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-const FONT_OPTIONS = ["Arial", "Calibri", "Geist Variable", "Times New Roman", "Courier New"]
+const FONT_OPTIONS = [
+  "Arial",
+  "Calibri",
+  "Geist Variable",
+  "Times New Roman",
+  "Courier New",
+]
 const ZOOM_OPTIONS = [50, 75, 90, 100, 110, 125, 150, 200]
 const CURRENCY_OPTIONS = ["USD", "EUR", "GBP", "PLN", "JPY", "CAD"]
 const NUM_FMT_TO_KIND: Record<string, string> = {
@@ -71,7 +77,9 @@ export function FormatBar() {
   const setNumberFormat = useSheetStore((state) => state.setNumberFormat)
   const setZoom = useSheetStore((state) => state.setZoom)
   const [emailDraft, setEmailDraft] = useState(fileSettings.email)
-  const [testRecipient, setTestRecipient] = useState(fileSettings.email.fromEmail)
+  const [testRecipient, setTestRecipient] = useState(
+    fileSettings.email.fromEmail
+  )
   const [isSavingEmail, setIsSavingEmail] = useState(false)
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false)
 
@@ -84,11 +92,21 @@ export function FormatBar() {
   }, [fileSettings.email, settingsOpen])
 
   return (
-    <div className="flex h-10 items-center gap-1 overflow-x-auto border-b border-border bg-muted/25 px-2 text-xs">
-      <Button size="icon-sm" variant="outline" onClick={() => void undo()} disabled={historyPast.length === 0}>
+    <div className="flex h-10 items-center gap-1 overflow-x-auto border-b border-border bg-card px-2 text-xs">
+      <Button
+        size="icon-sm"
+        variant="outline"
+        onClick={() => void undo()}
+        disabled={historyPast.length === 0}
+      >
         <Undo2 className="size-4" />
       </Button>
-      <Button size="icon-sm" variant="outline" onClick={() => void redo()} disabled={historyFuture.length === 0}>
+      <Button
+        size="icon-sm"
+        variant="outline"
+        onClick={() => void redo()}
+        disabled={historyFuture.length === 0}
+      >
         <Redo2 className="size-4" />
       </Button>
 
@@ -100,7 +118,9 @@ export function FormatBar() {
         onChange={(event) => setZoom(Number(event.target.value))}
       >
         {ZOOM_OPTIONS.map((value) => (
-          <option key={value} value={value}>{value}%</option>
+          <option key={value} value={value}>
+            {value}%
+          </option>
         ))}
       </select>
       <select
@@ -120,7 +140,12 @@ export function FormatBar() {
       </select>
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogTrigger asChild>
-          <Button size="sm" variant="outline" disabled={!workbook} title="File settings">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!workbook}
+            title="File settings"
+          >
             <Settings2 className="size-4" />
             Settings
           </Button>
@@ -139,25 +164,42 @@ export function FormatBar() {
               onValueChange={setSettingsTab}
               className="h-full gap-4"
             >
-              <TabsList variant="line" className="w-40 shrink-0 items-stretch rounded-lg border bg-muted/40 p-2">
-                <TabsTrigger value="general" className="justify-start text-sm">General</TabsTrigger>
-                <TabsTrigger value="communication" className="justify-start text-sm">Communication</TabsTrigger>
+              <TabsList
+                variant="line"
+                className="w-40 shrink-0 items-stretch rounded-lg border bg-muted/40 p-2"
+              >
+                <TabsTrigger value="general" className="justify-start text-sm">
+                  General
+                </TabsTrigger>
+                <TabsTrigger
+                  value="communication"
+                  className="justify-start text-sm"
+                >
+                  Communication
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="general" className="mt-0 space-y-3">
                 <div className="grid gap-2">
-                  <label className="text-xs text-muted-foreground" htmlFor="file-currency-select">
+                  <label
+                    className="text-xs text-muted-foreground"
+                    htmlFor="file-currency-select"
+                  >
                     Currency
                   </label>
                   <select
                     id="file-currency-select"
                     className="h-9 w-full rounded-md border border-input bg-background px-2"
                     value={currency}
-                    onChange={(event) => void setFileCurrency(event.target.value)}
+                    onChange={(event) =>
+                      void setFileCurrency(event.target.value)
+                    }
                     disabled={!workbook}
                   >
                     {CURRENCY_OPTIONS.map((option) => (
-                      <option key={option} value={option}>{option}</option>
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
                     ))}
                   </select>
                   <p className="text-xs text-muted-foreground">
@@ -169,22 +211,37 @@ export function FormatBar() {
               <TabsContent value="communication" className="mt-0 space-y-3">
                 <div className="space-y-1">
                   <h4 className="text-sm font-medium">Email</h4>
-                  <p className="text-xs text-muted-foreground">SMTP settings stored per file.</p>
+                  <p className="text-xs text-muted-foreground">
+                    SMTP settings stored per file.
+                  </p>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="col-span-2 grid gap-1">
-                    <label className="text-xs text-muted-foreground" htmlFor="smtp-host">SMTP Host</label>
+                    <label
+                      className="text-xs text-muted-foreground"
+                      htmlFor="smtp-host"
+                    >
+                      SMTP Host
+                    </label>
                     <Input
                       id="smtp-host"
                       value={emailDraft.host}
                       onChange={(event) =>
-                        setEmailDraft((current) => ({ ...current, host: event.target.value }))
+                        setEmailDraft((current) => ({
+                          ...current,
+                          host: event.target.value,
+                        }))
                       }
                       placeholder="smtp.example.com"
                     />
                   </div>
                   <div className="grid gap-1">
-                    <label className="text-xs text-muted-foreground" htmlFor="smtp-port">SMTP Port</label>
+                    <label
+                      className="text-xs text-muted-foreground"
+                      htmlFor="smtp-port"
+                    >
+                      SMTP Port
+                    </label>
                     <Input
                       id="smtp-port"
                       type="number"
@@ -205,53 +262,93 @@ export function FormatBar() {
                       type="checkbox"
                       checked={emailDraft.useTLS}
                       onChange={(event) =>
-                        setEmailDraft((current) => ({ ...current, useTLS: event.target.checked }))
+                        setEmailDraft((current) => ({
+                          ...current,
+                          useTLS: event.target.checked,
+                        }))
                       }
                     />
-                    <label className="text-xs text-muted-foreground" htmlFor="smtp-use-tls">Use TLS</label>
+                    <label
+                      className="text-xs text-muted-foreground"
+                      htmlFor="smtp-use-tls"
+                    >
+                      Use TLS
+                    </label>
                   </div>
                   <div className="grid gap-1">
-                    <label className="text-xs text-muted-foreground" htmlFor="smtp-username">Username</label>
+                    <label
+                      className="text-xs text-muted-foreground"
+                      htmlFor="smtp-username"
+                    >
+                      Username
+                    </label>
                     <Input
                       id="smtp-username"
                       value={emailDraft.username}
                       onChange={(event) =>
-                        setEmailDraft((current) => ({ ...current, username: event.target.value }))
+                        setEmailDraft((current) => ({
+                          ...current,
+                          username: event.target.value,
+                        }))
                       }
                       placeholder="smtp-user"
                     />
                   </div>
                   <div className="grid gap-1">
-                    <label className="text-xs text-muted-foreground" htmlFor="smtp-password">Password</label>
+                    <label
+                      className="text-xs text-muted-foreground"
+                      htmlFor="smtp-password"
+                    >
+                      Password
+                    </label>
                     <Input
                       id="smtp-password"
                       type="password"
                       value={emailDraft.password}
                       onChange={(event) =>
-                        setEmailDraft((current) => ({ ...current, password: event.target.value }))
+                        setEmailDraft((current) => ({
+                          ...current,
+                          password: event.target.value,
+                        }))
                       }
                       placeholder="••••••••"
                     />
                   </div>
                   <div className="grid gap-1">
-                    <label className="text-xs text-muted-foreground" htmlFor="smtp-from-name">From Name</label>
+                    <label
+                      className="text-xs text-muted-foreground"
+                      htmlFor="smtp-from-name"
+                    >
+                      From Name
+                    </label>
                     <Input
                       id="smtp-from-name"
                       value={emailDraft.fromName}
                       onChange={(event) =>
-                        setEmailDraft((current) => ({ ...current, fromName: event.target.value }))
+                        setEmailDraft((current) => ({
+                          ...current,
+                          fromName: event.target.value,
+                        }))
                       }
                       placeholder="Finance Bot"
                     />
                   </div>
                   <div className="grid gap-1">
-                    <label className="text-xs text-muted-foreground" htmlFor="smtp-from-email">From Email</label>
+                    <label
+                      className="text-xs text-muted-foreground"
+                      htmlFor="smtp-from-email"
+                    >
+                      From Email
+                    </label>
                     <Input
                       id="smtp-from-email"
                       type="email"
                       value={emailDraft.fromEmail}
                       onChange={(event) =>
-                        setEmailDraft((current) => ({ ...current, fromEmail: event.target.value }))
+                        setEmailDraft((current) => ({
+                          ...current,
+                          fromEmail: event.target.value,
+                        }))
                       }
                       placeholder="noreply@example.com"
                     />
@@ -260,14 +357,19 @@ export function FormatBar() {
                 <div className="flex justify-end">
                   <div className="flex w-full items-end justify-between gap-2">
                     <div className="grid flex-1 gap-1">
-                      <label className="text-xs text-muted-foreground" htmlFor="smtp-test-recipient">
+                      <label
+                        className="text-xs text-muted-foreground"
+                        htmlFor="smtp-test-recipient"
+                      >
                         Test recipient
                       </label>
                       <Input
                         id="smtp-test-recipient"
                         type="email"
                         value={testRecipient}
-                        onChange={(event) => setTestRecipient(event.target.value)}
+                        onChange={(event) =>
+                          setTestRecipient(event.target.value)
+                        }
                         placeholder="you@example.com"
                       />
                     </div>
@@ -281,15 +383,23 @@ export function FormatBar() {
                         setIsSendingTestEmail(true)
                         try {
                           await saveEmailSettings(emailDraft)
-                          await sendFileTestEmail(workbook.id, { to: testRecipient.trim() })
+                          await sendFileTestEmail(workbook.id, {
+                            to: testRecipient.trim(),
+                          })
                           toast.success("Test email sent.")
                         } catch (error) {
-                          toast.error(error instanceof Error ? error.message : "Failed to send test email")
+                          toast.error(
+                            error instanceof Error
+                              ? error.message
+                              : "Failed to send test email"
+                          )
                         } finally {
                           setIsSendingTestEmail(false)
                         }
                       }}
-                      disabled={!workbook || isSendingTestEmail || isSavingEmail}
+                      disabled={
+                        !workbook || isSendingTestEmail || isSavingEmail
+                      }
                     >
                       {isSendingTestEmail ? "Sending..." : "Send Test Email"}
                     </Button>
@@ -303,7 +413,9 @@ export function FormatBar() {
                           setIsSavingEmail(false)
                         }
                       }}
-                      disabled={!workbook || isSavingEmail || isSendingTestEmail}
+                      disabled={
+                        !workbook || isSavingEmail || isSendingTestEmail
+                      }
                     >
                       {isSavingEmail ? "Saving..." : "Save Email Settings"}
                     </Button>
@@ -319,11 +431,15 @@ export function FormatBar() {
       <select
         className="h-7 w-30 rounded-md border border-input bg-background px-1.5"
         value={selectedStyle.fontFamily || "Calibri"}
-        onChange={(event) => void applyStyle({ fontFamily: event.target.value })}
+        onChange={(event) =>
+          void applyStyle({ fontFamily: event.target.value })
+        }
         title="Font family"
       >
         {FONT_OPTIONS.map((font) => (
-          <option key={font} value={font}>{font}</option>
+          <option key={font} value={font}>
+            {font}
+          </option>
         ))}
       </select>
 
@@ -333,7 +449,9 @@ export function FormatBar() {
         min={8}
         max={72}
         value={selectedStyle.fontSize || 11}
-        onChange={(event) => void applyStyle({ fontSize: Number(event.target.value) || 11 })}
+        onChange={(event) =>
+          void applyStyle({ fontSize: Number(event.target.value) || 11 })
+        }
         title="Font size"
       />
 
@@ -384,7 +502,9 @@ export function FormatBar() {
           className="absolute inset-0 cursor-pointer opacity-0"
           type="color"
           value={selectedStyle.fontColor || "#000000"}
-          onChange={(event) => void applyStyle({ fontColor: event.target.value })}
+          onChange={(event) =>
+            void applyStyle({ fontColor: event.target.value })
+          }
           title="Text color"
         />
       </label>
@@ -400,7 +520,9 @@ export function FormatBar() {
           className="absolute inset-0 cursor-pointer opacity-0"
           type="color"
           value={selectedStyle.fillColor || "#ffffff"}
-          onChange={(event) => void applyStyle({ fillColor: event.target.value })}
+          onChange={(event) =>
+            void applyStyle({ fillColor: event.target.value })
+          }
           title="Fill color"
         />
       </label>
@@ -414,19 +536,25 @@ export function FormatBar() {
         <DropdownMenuContent align="start">
           <DropdownMenuLabel>Text Alignment</DropdownMenuLabel>
           <DropdownMenuItem
-            className={selectedStyle.hAlign === "left" ? "font-semibold" : undefined}
+            className={
+              selectedStyle.hAlign === "left" ? "font-semibold" : undefined
+            }
             onClick={() => void applyStyle({ hAlign: "left" })}
           >
             Left
           </DropdownMenuItem>
           <DropdownMenuItem
-            className={selectedStyle.hAlign === "center" ? "font-semibold" : undefined}
+            className={
+              selectedStyle.hAlign === "center" ? "font-semibold" : undefined
+            }
             onClick={() => void applyStyle({ hAlign: "center" })}
           >
             Center
           </DropdownMenuItem>
           <DropdownMenuItem
-            className={selectedStyle.hAlign === "right" ? "font-semibold" : undefined}
+            className={
+              selectedStyle.hAlign === "right" ? "font-semibold" : undefined
+            }
             onClick={() => void applyStyle({ hAlign: "right" })}
           >
             Right
@@ -435,19 +563,25 @@ export function FormatBar() {
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Vertical</DropdownMenuLabel>
           <DropdownMenuItem
-            className={selectedStyle.vAlign === "top" ? "font-semibold" : undefined}
+            className={
+              selectedStyle.vAlign === "top" ? "font-semibold" : undefined
+            }
             onClick={() => void applyStyle({ vAlign: "top" })}
           >
             Top
           </DropdownMenuItem>
           <DropdownMenuItem
-            className={selectedStyle.vAlign === "center" ? "font-semibold" : undefined}
+            className={
+              selectedStyle.vAlign === "center" ? "font-semibold" : undefined
+            }
             onClick={() => void applyStyle({ vAlign: "center" })}
           >
             Middle
           </DropdownMenuItem>
           <DropdownMenuItem
-            className={selectedStyle.vAlign === "bottom" ? "font-semibold" : undefined}
+            className={
+              selectedStyle.vAlign === "bottom" ? "font-semibold" : undefined
+            }
             onClick={() => void applyStyle({ vAlign: "bottom" })}
           >
             Bottom
@@ -456,31 +590,41 @@ export function FormatBar() {
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Borders</DropdownMenuLabel>
           <DropdownMenuItem
-            className={selectedStyle.border === "none" ? "font-semibold" : undefined}
+            className={
+              selectedStyle.border === "none" ? "font-semibold" : undefined
+            }
             onClick={() => void applyStyle({ border: "none" })}
           >
             None
           </DropdownMenuItem>
           <DropdownMenuItem
-            className={selectedStyle.border === "all" ? "font-semibold" : undefined}
+            className={
+              selectedStyle.border === "all" ? "font-semibold" : undefined
+            }
             onClick={() => void applyStyle({ border: "all" })}
           >
             All
           </DropdownMenuItem>
           <DropdownMenuItem
-            className={selectedStyle.border === "outer" ? "font-semibold" : undefined}
+            className={
+              selectedStyle.border === "outer" ? "font-semibold" : undefined
+            }
             onClick={() => void applyStyle({ border: "outer" })}
           >
             Outer
           </DropdownMenuItem>
           <DropdownMenuItem
-            className={selectedStyle.border === "inner" ? "font-semibold" : undefined}
+            className={
+              selectedStyle.border === "inner" ? "font-semibold" : undefined
+            }
             onClick={() => void applyStyle({ border: "inner" })}
           >
             Inner
           </DropdownMenuItem>
           <DropdownMenuItem
-            className={selectedStyle.border === "bottom" ? "font-semibold" : undefined}
+            className={
+              selectedStyle.border === "bottom" ? "font-semibold" : undefined
+            }
             onClick={() => void applyStyle({ border: "bottom" })}
           >
             Bottom
@@ -489,19 +633,27 @@ export function FormatBar() {
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Overflow</DropdownMenuLabel>
           <DropdownMenuItem
-            className={selectedStyle.overflow === "clip" ? "font-semibold" : undefined}
+            className={
+              selectedStyle.overflow === "clip" ? "font-semibold" : undefined
+            }
             onClick={() => void applyStyle({ overflow: "clip" })}
           >
             Clip
           </DropdownMenuItem>
           <DropdownMenuItem
-            className={selectedStyle.overflow === "wrap" ? "font-semibold" : undefined}
+            className={
+              selectedStyle.overflow === "wrap" ? "font-semibold" : undefined
+            }
             onClick={() => void applyStyle({ overflow: "wrap" })}
           >
             Wrap
           </DropdownMenuItem>
           <DropdownMenuItem
-            className={selectedStyle.overflow === "overflow" ? "font-semibold" : undefined}
+            className={
+              selectedStyle.overflow === "overflow"
+                ? "font-semibold"
+                : undefined
+            }
             onClick={() => void applyStyle({ overflow: "overflow" })}
           >
             Overflow
@@ -510,7 +662,9 @@ export function FormatBar() {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className={selectedStyle.wrapText ? "font-semibold" : undefined}
-            onClick={() => void applyStyle({ wrapText: !selectedStyle.wrapText })}
+            onClick={() =>
+              void applyStyle({ wrapText: !selectedStyle.wrapText })
+            }
           >
             <WrapText className="mr-2 size-4" />
             {selectedStyle.wrapText ? "Disable Wrap Text" : "Enable Wrap Text"}

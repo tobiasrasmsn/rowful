@@ -32,8 +32,14 @@ func NewFilesHandler(cacheStore *cache.Store, storageStore *storage.Store) Files
 	return FilesHandler{cache: cacheStore, storage: storageStore}
 }
 
-func (h FilesHandler) List(w http.ResponseWriter, _ *http.Request) {
-	files, err := h.storage.ListFiles(0)
+func (h FilesHandler) List(w http.ResponseWriter, r *http.Request) {
+	user, ok := CurrentUser(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, models.ErrorResponse{Error: "authentication required"})
+		return
+	}
+
+	files, err := h.storage.ListFilesForUser(user.ID, 0)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list files"})
 		return
@@ -42,6 +48,12 @@ func (h FilesHandler) List(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h FilesHandler) Recent(w http.ResponseWriter, r *http.Request) {
+	user, ok := CurrentUser(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, models.ErrorResponse{Error: "authentication required"})
+		return
+	}
+
 	limit := 10
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 100 {
@@ -49,7 +61,7 @@ func (h FilesHandler) Recent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	files, err := h.storage.ListRecentFiles(limit)
+	files, err := h.storage.ListRecentFilesForUser(user.ID, limit)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list recent files"})
 		return
@@ -64,13 +76,18 @@ func (h FilesHandler) Open(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	workbook, sheets, ok := h.refreshWorkbook(id)
+	if _, err := requireWorkbookAccess(r, h.storage, id); err != nil {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "file not found"})
+		return
+	}
+
+	workbook, sheets, ok := h.refreshWorkbook(r, id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "file not found"})
 		return
 	}
 	if err := h.storage.TouchWorkbookOpened(id); err == nil {
-		workbook, sheets, _ = h.refreshWorkbook(id)
+		workbook, sheets, _ = h.refreshWorkbook(r, id)
 	}
 
 	sheetName := workbook.ActiveSheet
@@ -90,6 +107,10 @@ func (h FilesHandler) Rename(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing file id"})
+		return
+	}
+	if _, err := requireWorkbookAccess(r, h.storage, id); err != nil {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "file not found"})
 		return
 	}
 
@@ -126,6 +147,10 @@ func (h FilesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing file id"})
 		return
 	}
+	if _, err := requireWorkbookAccess(r, h.storage, id); err != nil {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "file not found"})
+		return
+	}
 
 	filePath, err := h.storage.DeleteWorkbook(id)
 	if err != nil {
@@ -150,6 +175,10 @@ func (h FilesHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing file id"})
 		return
 	}
+	if _, err := requireWorkbookAccess(r, h.storage, id); err != nil {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "file not found"})
+		return
+	}
 
 	settings, err := h.storage.GetFileSettings(id)
 	if err != nil {
@@ -167,6 +196,10 @@ func (h FilesHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing file id"})
+		return
+	}
+	if _, err := requireWorkbookAccess(r, h.storage, id); err != nil {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "file not found"})
 		return
 	}
 
@@ -188,8 +221,12 @@ func (h FilesHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, models.FileSettingsResponse{Settings: settings})
 }
 
-func (h FilesHandler) refreshWorkbook(id string) (models.Workbook, map[string]models.Sheet, bool) {
-	workbook, sheets, err := h.storage.GetWorkbookByID(id)
+func (h FilesHandler) refreshWorkbook(r *http.Request, id string) (models.Workbook, map[string]models.Sheet, bool) {
+	user, ok := CurrentUser(r)
+	if !ok {
+		return models.Workbook{}, nil, false
+	}
+	workbook, sheets, err := h.storage.GetWorkbookByIDForUser(user.ID, id)
 	if err != nil {
 		return models.Workbook{}, nil, false
 	}

@@ -31,6 +31,12 @@ func NewUploadHandler(cfg config.Config, cacheStore *cache.Store, storageStore *
 }
 
 func (h UploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
+	user, ok := CurrentUser(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, models.ErrorResponse{Error: "authentication required"})
+		return
+	}
+
 	if err := r.ParseMultipartForm(h.cfg.MaxFileSizeBytes); err != nil {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid multipart form"})
 		return
@@ -60,10 +66,11 @@ func (h UploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hashBytes := sha256.Sum256(fileBytes)
-	fileHash := hex.EncodeToString(hashBytes[:])
+	rawHash := hex.EncodeToString(hashBytes[:])
+	fileHash := storage.ScopeFileHash(user.ID, rawHash)
 
 	if cached, ok := h.cache.GetByHash(fileHash); ok {
-		if workbook, sheets, err := h.storage.GetWorkbookByID(cached.Workbook.ID); err == nil {
+		if workbook, sheets, err := h.storage.GetWorkbookByIDForUser(user.ID, cached.Workbook.ID); err == nil {
 			_ = h.storage.TouchWorkbookOpened(workbook.ID)
 			h.cache.Put(cache.CachedWorkbook{Workbook: workbook})
 			sheetName := workbook.ActiveSheet
@@ -78,7 +85,7 @@ func (h UploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if workbook, sheets, found, err := h.storage.GetWorkbookByHash(fileHash); err != nil {
+	if workbook, sheets, found, err := h.storage.GetWorkbookByHashForUser(user.ID, fileHash); err != nil {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load workbook from storage"})
 		return
 	} else if found {
@@ -106,11 +113,12 @@ func (h UploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	id := uuid.NewString()
 	workbookMeta := cache.BuildWorkbookMeta(id, header.Filename, fileHash, sheets)
 
-	if err := os.MkdirAll(h.cfg.UploadDir, 0o755); err != nil {
+	userUploadDir := filepath.Join(h.cfg.UploadDir, user.ID)
+	if err := os.MkdirAll(userUploadDir, 0o755); err != nil {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to prepare upload directory"})
 		return
 	}
-	filePath := filepath.Join(h.cfg.UploadDir, fileHash+".xlsx")
+	filePath := filepath.Join(userUploadDir, id+".xlsx")
 	if _, err := os.Stat(filePath); err != nil {
 		if !os.IsNotExist(err) {
 			writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to inspect upload storage"})
@@ -122,7 +130,7 @@ func (h UploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := h.storage.SaveWorkbook(workbookMeta, sheets, filePath); err != nil {
+	if err := h.storage.SaveWorkbook(user.ID, workbookMeta, sheets, filePath); err != nil {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to persist workbook"})
 		return
 	}

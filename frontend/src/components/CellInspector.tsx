@@ -19,7 +19,6 @@ export function CellInspector() {
   const selectedCell = useSheetStore((state) => state.selectedCell)
   const selectedRange = useSheetStore((state) => state.selectedRange)
   const selectionMode = useSheetStore((state) => state.selectionMode)
-  const sheet = useSheetStore((state) => state.sheet)
   const isMultiCellSelection =
     selectionMode === "cell" &&
     selectedRange &&
@@ -60,15 +59,14 @@ export function CellInspector() {
   }, [isMultiCellSelection, selectedCell.address, selectedRange])
 
   return (
-    <div className="flex h-12 items-center gap-2 border-b border-border bg-muted/20 px-2">
-      <Input value={selectedLabel} readOnly className="w-28 text-center font-mono" />
+    <div className="flex h-12 items-center gap-2 border-b border-border bg-card px-2">
+      <Input
+        value={selectedLabel}
+        readOnly
+        className="w-28 text-center font-mono"
+      />
       <Separator orientation="vertical" className="h-6" />
       <Input value={formulaValue} readOnly className="font-mono" />
-      <Separator orientation="vertical" className="h-6" />
-      <span className="text-xs text-muted-foreground">
-        {sheet ? `${sheet.maxRow.toLocaleString()} rows x ${sheet.maxCol.toLocaleString()} cols` : ""}
-      </span>
-      <span className="text-xs text-muted-foreground">Use header right-click to delete rows/cols</span>
     </div>
   )
 }

@@ -96,7 +96,7 @@ func (h SheetHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	workbook, _, ok := h.refreshWorkbook(id)
+	workbook, _, ok := h.refreshWorkbook(r, id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
@@ -109,7 +109,7 @@ func (h SheetHandler) Get(w http.ResponseWriter, r *http.Request) {
 	window := parseWindowRequest(r)
 	if sheetName != workbook.ActiveSheet {
 		_ = h.storage.SetActiveSheet(id, sheetName)
-		workbook, _, _ = h.refreshWorkbook(id)
+		workbook, _, _ = h.refreshWorkbook(r, id)
 	}
 	sheet, err := h.storage.GetSheetWindow(id, sheetName, window.rowStart, window.rowCount, window.colStart, window.colCount)
 	if err != nil {
@@ -128,6 +128,10 @@ func (h SheetHandler) UpdateCell(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing workbook id"})
+		return
+	}
+	if _, _, ok := h.loadWorkbook(r, id); !ok {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
 	}
 
@@ -150,7 +154,7 @@ func (h SheetHandler) UpdateCell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	workbook, _, ok := h.refreshWorkbook(id)
+	workbook, _, ok := h.refreshWorkbook(r, id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
@@ -167,6 +171,10 @@ func (h SheetHandler) ApplyStyle(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing workbook id"})
+		return
+	}
+	if _, _, ok := h.loadWorkbook(r, id); !ok {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
 	}
 
@@ -192,6 +200,10 @@ func (h SheetHandler) ClearFormatting(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing workbook id"})
 		return
 	}
+	if _, _, ok := h.loadWorkbook(r, id); !ok {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
+		return
+	}
 
 	var req clearRangeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -213,6 +225,10 @@ func (h SheetHandler) ClearValues(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing workbook id"})
+		return
+	}
+	if _, _, ok := h.loadWorkbook(r, id); !ok {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
 	}
 
@@ -238,6 +254,10 @@ func (h SheetHandler) SaveSheet(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing workbook id"})
 		return
 	}
+	if _, _, ok := h.loadWorkbook(r, id); !ok {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
+		return
+	}
 
 	var req saveSheetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -254,7 +274,7 @@ func (h SheetHandler) SaveSheet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	workbook, _, ok := h.refreshWorkbook(id)
+	workbook, _, ok := h.refreshWorkbook(r, id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
@@ -271,6 +291,10 @@ func (h SheetHandler) CreateSheet(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing workbook id"})
+		return
+	}
+	if _, _, ok := h.loadWorkbook(r, id); !ok {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
 	}
 
@@ -290,7 +314,7 @@ func (h SheetHandler) CreateSheet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	workbook, _, ok := h.refreshWorkbook(id)
+	workbook, _, ok := h.refreshWorkbook(r, id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
@@ -307,6 +331,10 @@ func (h SheetHandler) RenameSheet(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing workbook id"})
+		return
+	}
+	if _, _, ok := h.loadWorkbook(r, id); !ok {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
 	}
 
@@ -327,7 +355,7 @@ func (h SheetHandler) RenameSheet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	workbook, _, ok := h.refreshWorkbook(id)
+	workbook, _, ok := h.refreshWorkbook(r, id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
@@ -344,6 +372,10 @@ func (h SheetHandler) DeleteSheet(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing workbook id"})
+		return
+	}
+	if _, _, ok := h.loadWorkbook(r, id); !ok {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
 	}
 
@@ -363,7 +395,7 @@ func (h SheetHandler) DeleteSheet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	workbook, sheets, ok := h.loadWorkbook(id)
+	workbook, sheets, ok := h.loadWorkbook(r, id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
@@ -389,6 +421,10 @@ func (h SheetHandler) ResizeSheet(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing workbook id"})
 		return
 	}
+	if _, _, ok := h.loadWorkbook(r, id); !ok {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
+		return
+	}
 
 	var req resizeSheetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -410,7 +446,7 @@ func (h SheetHandler) ResizeSheet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	workbook, _, ok := h.refreshWorkbook(id)
+	workbook, _, ok := h.refreshWorkbook(r, id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
@@ -438,6 +474,10 @@ func (h SheetHandler) DeleteRows(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing workbook id"})
 		return
 	}
+	if _, _, ok := h.loadWorkbook(r, id); !ok {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
+		return
+	}
 	var req deleteAxisRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid JSON body"})
@@ -452,7 +492,7 @@ func (h SheetHandler) DeleteRows(w http.ResponseWriter, r *http.Request) {
 		h.writeStorageError(w, err, "failed to delete rows")
 		return
 	}
-	workbook, _, ok := h.refreshWorkbook(id)
+	workbook, _, ok := h.refreshWorkbook(r, id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
@@ -472,6 +512,10 @@ func (h SheetHandler) InsertRows(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing workbook id"})
 		return
 	}
+	if _, _, ok := h.loadWorkbook(r, id); !ok {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
+		return
+	}
 	var req deleteAxisRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid JSON body"})
@@ -486,7 +530,7 @@ func (h SheetHandler) InsertRows(w http.ResponseWriter, r *http.Request) {
 		h.writeStorageError(w, err, "failed to insert rows")
 		return
 	}
-	workbook, _, ok := h.refreshWorkbook(id)
+	workbook, _, ok := h.refreshWorkbook(r, id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
@@ -506,6 +550,10 @@ func (h SheetHandler) DeleteCols(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing workbook id"})
 		return
 	}
+	if _, _, ok := h.loadWorkbook(r, id); !ok {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
+		return
+	}
 	var req deleteAxisRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid JSON body"})
@@ -520,7 +568,7 @@ func (h SheetHandler) DeleteCols(w http.ResponseWriter, r *http.Request) {
 		h.writeStorageError(w, err, "failed to delete columns")
 		return
 	}
-	workbook, _, ok := h.refreshWorkbook(id)
+	workbook, _, ok := h.refreshWorkbook(r, id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
@@ -540,6 +588,10 @@ func (h SheetHandler) InsertCols(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing workbook id"})
 		return
 	}
+	if _, _, ok := h.loadWorkbook(r, id); !ok {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
+		return
+	}
 	var req deleteAxisRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid JSON body"})
@@ -554,7 +606,7 @@ func (h SheetHandler) InsertCols(w http.ResponseWriter, r *http.Request) {
 		h.writeStorageError(w, err, "failed to insert columns")
 		return
 	}
-	workbook, _, ok := h.refreshWorkbook(id)
+	workbook, _, ok := h.refreshWorkbook(r, id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "workbook not found"})
 		return
@@ -568,14 +620,18 @@ func (h SheetHandler) InsertCols(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, models.SheetResponse{Workbook: workbook, Sheet: sheet})
 }
 
-func (h SheetHandler) loadWorkbook(id string) (models.Workbook, map[string]models.Sheet, bool) {
+func (h SheetHandler) loadWorkbook(r *http.Request, id string) (models.Workbook, map[string]models.Sheet, bool) {
+	user, ok := CurrentUser(r)
+	if !ok {
+		return models.Workbook{}, nil, false
+	}
 	if cached, ok := h.cache.GetByID(id); ok {
-		workbook, sheets, err := h.storage.GetWorkbookByID(cached.Workbook.ID)
+		workbook, sheets, err := h.storage.GetWorkbookByIDForUser(user.ID, cached.Workbook.ID)
 		if err == nil {
 			return workbook, sheets, true
 		}
 	}
-	workbook, sheets, err := h.storage.GetWorkbookByID(id)
+	workbook, sheets, err := h.storage.GetWorkbookByIDForUser(user.ID, id)
 	if err != nil {
 		return models.Workbook{}, nil, false
 	}
@@ -583,8 +639,12 @@ func (h SheetHandler) loadWorkbook(id string) (models.Workbook, map[string]model
 	return workbook, sheets, true
 }
 
-func (h SheetHandler) refreshWorkbook(id string) (models.Workbook, map[string]models.Sheet, bool) {
-	workbook, sheets, err := h.storage.GetWorkbookByID(id)
+func (h SheetHandler) refreshWorkbook(r *http.Request, id string) (models.Workbook, map[string]models.Sheet, bool) {
+	user, ok := CurrentUser(r)
+	if !ok {
+		return models.Workbook{}, nil, false
+	}
+	workbook, sheets, err := h.storage.GetWorkbookByIDForUser(user.ID, id)
 	if err != nil {
 		return models.Workbook{}, nil, false
 	}

@@ -76,6 +76,10 @@ func (h FilesHandler) sendWorkbookEmail(w http.ResponseWriter, r *http.Request, 
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing file id"})
 		return
 	}
+	if _, err := requireWorkbookAccess(r, h.storage, workbookID); err != nil {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "file not found"})
+		return
+	}
 
 	var req sendEmailRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

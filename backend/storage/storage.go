@@ -119,6 +119,9 @@ CREATE TABLE IF NOT EXISTS managed_domains (
 	if _, err := s.db.Exec(schema); err != nil {
 		return fmt.Errorf("create schema: %w", err)
 	}
+	if err := s.migrateAuthTables(); err != nil {
+		return err
+	}
 
 	if err := s.ensureWorkbookColumn("file_path", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
@@ -216,7 +219,7 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) SaveWorkbook(workbook models.Workbook, sheets map[string]models.Sheet, filePath string) error {
+func (s *Store) SaveWorkbook(userID string, workbook models.Workbook, sheets map[string]models.Sheet, filePath string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	created := workbook.CreatedAt.UTC().Format(time.RFC3339Nano)
 	if workbook.CreatedAt.IsZero() {
@@ -242,6 +245,13 @@ ON CONFLICT(id) DO UPDATE SET
 `, workbook.ID, workbook.FileName, workbook.FileHash, filePath, workbook.ActiveSheet, created, now, now)
 	if err != nil {
 		return fmt.Errorf("upsert workbook: %w", err)
+	}
+	if _, err := tx.Exec(`
+INSERT INTO workbook_users(workbook_id, user_id, created_at)
+VALUES(?, ?, ?)
+ON CONFLICT(workbook_id) DO UPDATE SET user_id = excluded.user_id
+`, workbook.ID, userID, now); err != nil {
+		return fmt.Errorf("upsert workbook owner: %w", err)
 	}
 
 	if _, err := tx.Exec(`DELETE FROM sheets WHERE workbook_id = ?`, workbook.ID); err != nil {
@@ -1940,7 +1950,8 @@ func min(a, b int) int {
 }
 
 var (
-	ErrNotFound = errors.New("not found")
-	ErrConflict = errors.New("conflict")
-	ErrInvalid  = errors.New("invalid")
+	ErrNotFound  = errors.New("not found")
+	ErrConflict  = errors.New("conflict")
+	ErrInvalid   = errors.New("invalid")
+	ErrForbidden = errors.New("forbidden")
 )

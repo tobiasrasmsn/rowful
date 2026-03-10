@@ -143,6 +143,7 @@ const CACHE_COL_PADDING = 24
 const MAX_HISTORY_RANGE_AREA = 4096
 const KANBAN_REGIONS_STORAGE_KEY = "planar:kanban-regions:v1"
 let clearValuesInFlight = false
+let refreshFilesDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const EMPTY_CELL: SelectedCell = {
   address: "A1",
@@ -250,6 +251,12 @@ const findCell = (sheet: Sheet | null, row: number, col: number) =>
 
 const readCellValue = (sheet: Sheet | null, row: number, col: number) =>
   findCell(sheet, row, col)?.value ?? ""
+
+const readValueFromWindowPayload = (
+  payload: { sheet: Sheet },
+  row: number,
+  col: number
+) => payload.sheet.rows.find((sheetRow) => sheetRow.index === row)?.cells.find((cell) => cell.col === col)?.value ?? ""
 
 const defaultKanbanTitleCol = (range: CellRange, statusCol: number) => {
   for (let col = range.colStart; col <= range.colEnd; col += 1) {
@@ -749,6 +756,25 @@ const writePersistedKanbanRegions = (workbookId: string, regions: KanbanRegion[]
     // ignore storage failures
   }
 }
+
+const scheduleRefreshFiles = (refresh: () => Promise<void>, delayMs = 350) => {
+  if (typeof window === "undefined") {
+    void refresh()
+    return
+  }
+  if (refreshFilesDebounceTimer) {
+    window.clearTimeout(refreshFilesDebounceTimer)
+  }
+  refreshFilesDebounceTimer = window.setTimeout(() => {
+    refreshFilesDebounceTimer = null
+    void refresh()
+  }, delayMs)
+}
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms)
+  })
 
 const expandWindow = (
   sheet: Sheet | null,
@@ -1393,18 +1419,55 @@ export const useSheetStore = create<SheetState & {
       error: null,
     })
 
-    try {
-      const payload = await updateCellRequest(state.workbook.id, {
-        sheet: state.sheet.name,
-        row,
-        col,
-        value,
-      })
-      set({ workbook: payload.workbook, sheet: mergeSheetWindow(get().sheet, payload.sheet) })
-      await get().refreshFiles()
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to persist cell change" })
+    const requestPayload = {
+      sheet: state.sheet.name,
+      row,
+      col,
+      value,
     }
+    let attemptError: unknown = null
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const payload = await updateCellRequest(state.workbook.id, requestPayload)
+        set({ workbook: payload.workbook, sheet: mergeSheetWindow(get().sheet, payload.sheet) })
+        scheduleRefreshFiles(() => get().refreshFiles())
+        return
+      } catch (error) {
+        attemptError = error
+        if (attempt < 1) {
+          await sleep(120)
+          continue
+        }
+      }
+    }
+    try {
+      const verificationPayload = await fetchSheetWindow(state.workbook.id, {
+        sheet: state.sheet.name,
+        rowStart: row,
+        rowCount: 1,
+        colStart: col,
+        colCount: 1,
+      })
+      const persistedValue = readValueFromWindowPayload(verificationPayload, row, col)
+      if (persistedValue === value) {
+        set({
+          workbook: verificationPayload.workbook,
+          sheet: mergeSheetWindow(get().sheet, verificationPayload.sheet),
+          error: null,
+        })
+        scheduleRefreshFiles(() => get().refreshFiles())
+        return
+      }
+    } catch {
+      // ignore verification failure and surface original error below
+    }
+
+    set({
+      error:
+        attemptError instanceof Error
+          ? attemptError.message
+          : "Failed to persist cell change",
+    })
   },
 
   selectCell: (row, col, value, formula) => {
@@ -2056,3 +2119,31 @@ export const useSheetStore = create<SheetState & {
     })
   },
 }))
+
+export function resetSheetStore() {
+  useSheetStore.setState({
+    workbook: null,
+    sheet: null,
+    files: [],
+    recentFiles: [],
+    selectedSheetName: "",
+    activeWorkspaceTab: "",
+    selectionMode: "cell",
+    selectedRange: null,
+    selectedRow: 1,
+    selectedCol: 1,
+    selectedCell: EMPTY_CELL,
+    selectedStyle: EMPTY_STYLE,
+    historyPast: [],
+    historyFuture: [],
+    isLoading: false,
+    error: null,
+    zoom: 100,
+    search: "",
+    fileSettings: DEFAULT_FILE_SETTINGS,
+    kanbanRegions: [],
+    loadedWindows: [],
+    loadingWindows: [],
+    viewportWindow: DEFAULT_WINDOW,
+  })
+}

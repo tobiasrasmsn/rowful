@@ -139,6 +139,7 @@ const VISIBLE_ROW_OVERSCAN = 150
 const VISIBLE_COL_OVERSCAN = 12
 const FETCH_ROW_BLOCK = 400
 const FETCH_COL_BLOCK = 32
+const CELL_UPDATE_BATCH_CONCURRENCY = 12
 
 const toColumnLabel = (index: number) => {
   let label = ""
@@ -616,6 +617,25 @@ const parseClipboardText = (text: string) => {
     lines.pop()
   }
   return lines.map((line) => line.split("\t"))
+}
+
+const runCellUpdateBatch = async (
+  tasks: Array<() => Promise<void>>,
+  concurrency = CELL_UPDATE_BATCH_CONCURRENCY
+) => {
+  if (tasks.length === 0) {
+    return
+  }
+  const safeConcurrency = Math.max(1, Math.min(concurrency, tasks.length))
+  let nextTaskIndex = 0
+  const workers = Array.from({ length: safeConcurrency }, async () => {
+    while (nextTaskIndex < tasks.length) {
+      const taskIndex = nextTaskIndex
+      nextTaskIndex += 1
+      await tasks[taskIndex]()
+    }
+  })
+  await Promise.all(workers)
 }
 
 const isCellInsideRange = (
@@ -1549,17 +1569,18 @@ export function Grid() {
 
   const applyClipboardPayload = useCallback(
     async (row: number, col: number, payload: ClipboardPayload) => {
+      const tasks: Array<() => Promise<void>> = []
       for (let rowOffset = 0; rowOffset < payload.rowCount; rowOffset += 1) {
         const line = payload.cells[rowOffset] ?? []
         for (let colOffset = 0; colOffset < payload.colCount; colOffset += 1) {
           const cell = line[colOffset] ?? { value: "", formula: "" }
-          await updateCell(
-            row + rowOffset,
-            col + colOffset,
-            cell.formula || cell.value || ""
-          )
+          const targetRow = row + rowOffset
+          const targetCol = col + colOffset
+          const nextValue = cell.formula || cell.value || ""
+          tasks.push(() => updateCell(targetRow, targetCol, nextValue))
         }
       }
+      await runCellUpdateBatch(tasks)
     },
     [updateCell]
   )
@@ -1662,11 +1683,15 @@ export function Grid() {
         payload.cells.push(row)
       }
 
+      const clearTasks: Array<() => Promise<void>> = []
       for (let row = source.rowStart; row <= source.rowEnd; row += 1) {
         for (let col = source.colStart; col <= source.colEnd; col += 1) {
-          await updateCell(row, col, "")
+          const targetRow = row
+          const targetCol = col
+          clearTasks.push(() => updateCell(targetRow, targetCol, ""))
         }
       }
+      await runCellUpdateBatch(clearTasks)
       await applyClipboardPayload(
         destinationTopLeftRow,
         destinationTopLeftCol,

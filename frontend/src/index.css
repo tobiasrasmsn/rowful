@@ -124,8 +124,8 @@
 .sheet-grid revo-grid {
   --revo-grid-primary: #2d6eff;
   --revo-grid-primary-transparent: rgba(45, 110, 255, 0.9);
-  --revo-grid-cell-border: #dde3ec;
-  --revo-grid-header-border: #d3dae5;
+  --revo-grid-cell-border: var(--color-border);
+  --revo-grid-header-border: var(--color-border);
   --revo-grid-focused-bg: rgba(45, 110, 255, 0.08);
   border: 0;
   font-size: var(--planar-grid-font-size, 12px);

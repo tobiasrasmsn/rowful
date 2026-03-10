@@ -32,6 +32,7 @@ func main() {
 	sheetHandler := handlers.NewSheetHandler(store, storageStore)
 	filesHandler := handlers.NewFilesHandler(store, storageStore)
 	domainsHandler := handlers.NewDomainsHandler(cfg, storageStore)
+	authHandler := handlers.NewAuthHandler(storageStore)
 
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
@@ -43,7 +44,7 @@ func main() {
 		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: false,
+		AllowCredentials: true,
 		MaxAge:           300,
 	}))
 
@@ -53,33 +54,50 @@ func main() {
 	})
 
 	router.Route("/api", func(r chi.Router) {
-		r.Post("/upload", uploadHandler.Handle)
-		r.Get("/sheet/{id}", sheetHandler.Get)
-		r.Post("/sheet/{id}/cell", sheetHandler.UpdateCell)
-		r.Post("/sheet/{id}/style", sheetHandler.ApplyStyle)
-		r.Post("/sheet/{id}/clear-formatting", sheetHandler.ClearFormatting)
-		r.Post("/sheet/{id}/clear-values", sheetHandler.ClearValues)
-		r.Post("/sheet/{id}/save", sheetHandler.SaveSheet)
-		r.Post("/sheet/{id}/create", sheetHandler.CreateSheet)
-		r.Post("/sheet/{id}/rename", sheetHandler.RenameSheet)
-		r.Post("/sheet/{id}/delete", sheetHandler.DeleteSheet)
-		r.Post("/sheet/{id}/resize", sheetHandler.ResizeSheet)
-		r.Post("/sheet/{id}/insert-rows", sheetHandler.InsertRows)
-		r.Post("/sheet/{id}/insert-cols", sheetHandler.InsertCols)
-		r.Post("/sheet/{id}/delete-rows", sheetHandler.DeleteRows)
-		r.Post("/sheet/{id}/delete-cols", sheetHandler.DeleteCols)
-		r.Get("/files", filesHandler.List)
-		r.Get("/files/recent", filesHandler.Recent)
-		r.Post("/files/{id}/open", filesHandler.Open)
-		r.Get("/files/{id}/settings", filesHandler.GetSettings)
-		r.Patch("/files/{id}/settings", filesHandler.UpdateSettings)
-		r.Post("/files/{id}/email/send", filesHandler.SendEmail)
-		r.Post("/files/{id}/email/test", filesHandler.SendTestEmail)
-		r.Patch("/files/{id}", filesHandler.Rename)
-		r.Delete("/files/{id}", filesHandler.Delete)
-		r.Get("/domains", domainsHandler.List)
-		r.Post("/domains/check", domainsHandler.Check)
-		r.Post("/domains", domainsHandler.Create)
+		r.Route("/auth", func(auth chi.Router) {
+			auth.Get("/session", authHandler.Session)
+			auth.Post("/login", authHandler.Login)
+			auth.Post("/signup", authHandler.Signup)
+			auth.Post("/logout", authHandler.Logout)
+		})
+
+		r.Group(func(private chi.Router) {
+			private.Use(authHandler.RequireAuth)
+			private.Post("/upload", uploadHandler.Handle)
+			private.Get("/sheet/{id}", sheetHandler.Get)
+			private.Post("/sheet/{id}/cell", sheetHandler.UpdateCell)
+			private.Post("/sheet/{id}/style", sheetHandler.ApplyStyle)
+			private.Post("/sheet/{id}/clear-formatting", sheetHandler.ClearFormatting)
+			private.Post("/sheet/{id}/clear-values", sheetHandler.ClearValues)
+			private.Post("/sheet/{id}/save", sheetHandler.SaveSheet)
+			private.Post("/sheet/{id}/create", sheetHandler.CreateSheet)
+			private.Post("/sheet/{id}/rename", sheetHandler.RenameSheet)
+			private.Post("/sheet/{id}/delete", sheetHandler.DeleteSheet)
+			private.Post("/sheet/{id}/resize", sheetHandler.ResizeSheet)
+			private.Post("/sheet/{id}/insert-rows", sheetHandler.InsertRows)
+			private.Post("/sheet/{id}/insert-cols", sheetHandler.InsertCols)
+			private.Post("/sheet/{id}/delete-rows", sheetHandler.DeleteRows)
+			private.Post("/sheet/{id}/delete-cols", sheetHandler.DeleteCols)
+			private.Get("/files", filesHandler.List)
+			private.Get("/files/recent", filesHandler.Recent)
+			private.Post("/files/{id}/open", filesHandler.Open)
+			private.Get("/files/{id}/settings", filesHandler.GetSettings)
+			private.Patch("/files/{id}/settings", filesHandler.UpdateSettings)
+			private.Post("/files/{id}/email/send", filesHandler.SendEmail)
+			private.Post("/files/{id}/email/test", filesHandler.SendTestEmail)
+			private.Patch("/files/{id}", filesHandler.Rename)
+			private.Delete("/files/{id}", filesHandler.Delete)
+
+			private.Group(func(admin chi.Router) {
+				admin.Use(authHandler.RequireAdmin)
+				admin.Get("/domains", domainsHandler.List)
+				admin.Post("/domains/check", domainsHandler.Check)
+				admin.Post("/domains", domainsHandler.Create)
+				admin.Get("/admin/allowlist", authHandler.ListAllowlist)
+				admin.Post("/admin/allowlist", authHandler.AddAllowlist)
+				admin.Delete("/admin/allowlist", authHandler.DeleteAllowlist)
+			})
+		})
 	})
 
 	server := &http.Server{
