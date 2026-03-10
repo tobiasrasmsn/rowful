@@ -20,7 +20,6 @@ import { Toaster } from "@/components/ui/sonner"
 import { useSheetStore } from "@/store/sheetStore"
 
 function SheetWorkspace() {
-  const error = useSheetStore((state) => state.error)
   const activeWorkspaceTab = useSheetStore((state) => state.activeWorkspaceTab)
   const kanbanRegions = useSheetStore((state) => state.kanbanRegions)
   const sheetName = useSheetStore((state) => state.sheet?.name)
@@ -31,13 +30,6 @@ function SheetWorkspace() {
           region.sheetName === sheetName
       )
     : null
-
-  useEffect(() => {
-    if (!error) {
-      return
-    }
-    toast.error(error, { id: "sheet-error" })
-  }, [error])
 
   return (
     <>
@@ -94,6 +86,15 @@ function RootRedirect() {
 }
 
 export function App() {
+  const error = useSheetStore((state) => state.error)
+
+  useEffect(() => {
+    if (!error) {
+      return
+    }
+    toast.error(error, { id: "sheet-error" })
+  }, [error])
+
   return (
     <>
       <div className="flex h-svh flex-col overflow-hidden bg-background">

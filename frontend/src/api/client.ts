@@ -15,15 +15,41 @@ import type {
   ManagedDomainsResponse,
 } from "@/types/domain"
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "")
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/$/, "")
 
 async function parseJson<T>(response: Response): Promise<T> {
-  const payload = await response.json()
+  const bodyText = await response.text()
+  const contentType = response.headers.get("content-type") ?? ""
+  const isJson = contentType.toLowerCase().includes("application/json")
+
+  let payload: unknown = null
+  if (bodyText.length > 0 && isJson) {
+    try {
+      payload = JSON.parse(bodyText)
+    } catch {
+      // Fall back to status-based error handling below.
+    }
+  }
+
   if (!response.ok) {
+    const apiMessage =
+      payload && typeof payload === "object" && "error" in payload
+        ? (payload as { error?: unknown }).error
+        : null
     const message =
-      typeof payload?.error === "string" ? payload.error : "Request failed"
+      typeof apiMessage === "string" && apiMessage.length > 0
+        ? apiMessage
+        : `Request failed (HTTP ${response.status})`
     throw new Error(message)
   }
+
+  if (payload === null) {
+    if (bodyText.length === 0) {
+      throw new Error("Empty response from server")
+    }
+    throw new Error(`Unexpected response format (HTTP ${response.status})`)
+  }
+
   return payload as T
 }
 
