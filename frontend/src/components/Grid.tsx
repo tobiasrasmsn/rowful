@@ -47,6 +47,9 @@ type PersistedSheetWidths = {
 }
 type PersistedWidthsBySheet = Record<string, PersistedSheetWidths>
 type PreparedCell = {
+  display: string
+  displayValue: string
+  previewValue: string
   formula: string
   style?: CellStyleValue
   value: string
@@ -125,21 +128,22 @@ type SnippetChoice = {
   key: string
   label: string
 }
-type KanbanBadgePosition = {
-  id: string
-  left: number
-  top: number
-}
 
 const DEFAULT_COLUMN_WIDTH = 110
 const MIN_COLUMN_WIDTH = 70
-const MAX_COLUMN_WIDTH = 1400
+const CELL_PREVIEW_CHAR_LIMIT = 100
+const PREVIEW_CHAR_WIDTH_PX = 6
+const GRID_CELL_HORIZONTAL_PADDING_PX = 16
+const MAX_COLUMN_WIDTH =
+  CELL_PREVIEW_CHAR_LIMIT * PREVIEW_CHAR_WIDTH_PX +
+  GRID_CELL_HORIZONTAL_PADDING_PX
 const COLUMN_WIDTHS_STORAGE_KEY = "planar:column-widths:v1"
 const VISIBLE_ROW_OVERSCAN = 150
 const VISIBLE_COL_OVERSCAN = 12
 const FETCH_ROW_BLOCK = 400
 const FETCH_COL_BLOCK = 32
 const CELL_UPDATE_BATCH_CONCURRENCY = 12
+const MIN_GRID_ROWS = 1000
 
 const toColumnLabel = (index: number) => {
   let label = ""
@@ -162,6 +166,17 @@ const toColumnNumber = (label: string) => {
     value = value * 26 + (code - 64)
   }
   return value > 0 ? value : null
+}
+
+const MIN_GRID_COLS = toColumnNumber("CV") ?? 100
+const getGridRowCount = (maxRow: number) => Math.max(maxRow, MIN_GRID_ROWS, 1)
+const getGridColCount = (maxCol: number) => Math.max(maxCol, MIN_GRID_COLS, 1)
+
+const toCellPreviewDisplay = (value: string) => {
+  if (value.length <= CELL_PREVIEW_CHAR_LIMIT) {
+    return value
+  }
+  return `${value.slice(0, CELL_PREVIEW_CHAR_LIMIT).trimEnd()}…`
 }
 
 const hasRenderableStyle = (
@@ -193,6 +208,9 @@ const buildPreparedCellStyle = (
         ? style.hAlign
         : undefined,
     textDecoration: textDecoration || undefined,
+    textOverflow: style.wrapText ? "clip" : "ellipsis",
+    overflow: "hidden",
+    overflowWrap: style.wrapText ? "anywhere" : undefined,
     whiteSpace: style.wrapText ? "normal" : undefined,
   }
 }
@@ -319,11 +337,12 @@ const resolveCellProperties = (
 
 const createPreparedGridData = (sheet: Sheet): PreparedGridData => ({
   cellMatrix: new Map(),
-  columnLabels: Array.from({ length: Math.max(sheet.maxCol, 1) }, (_, idx) =>
-    toColumnLabel(idx + 1)
+  columnLabels: Array.from(
+    { length: getGridColCount(sheet.maxCol) },
+    (_, idx) => toColumnLabel(idx + 1)
   ),
   loadedRows: new Set(),
-  source: Array.from({ length: Math.max(sheet.maxRow, 1) }, () => ({})),
+  source: Array.from({ length: getGridRowCount(sheet.maxRow) }, () => ({})),
 })
 
 const applySheetRowsToPreparedGridData = (
@@ -333,23 +352,45 @@ const applySheetRowsToPreparedGridData = (
 ) => {
   for (const row of rows) {
     preparedGridData.loadedRows.add(row.index)
+    const existingRowCells = preparedGridData.cellMatrix.get(row.index)
+    const existingRowSource = preparedGridData.source[row.index - 1] ?? {}
     const rowCells = new Map<number, PreparedCell>()
     const rowSource: GridRow = {}
+    let rowChanged = false
 
     for (const cell of row.cells) {
       const value = cell.value || ""
-      const displayValue = renderCellDisplayValue(
-        value,
-        cell.style,
-        cell.display,
-        { currency }
-      )
+      const formula = cell.formula || ""
+      const display = cell.display || ""
+      const existing = existingRowCells?.get(cell.col)
+      if (
+        existing &&
+        existing.value === value &&
+        existing.formula === formula &&
+        existing.style === cell.style &&
+        existing.display === display
+      ) {
+        rowCells.set(cell.col, existing)
+        rowSource[String(cell.col)] = toCellPreviewDisplay(
+          existing.displayValue || existingRowSource[String(cell.col)] || ""
+        )
+        continue
+      }
+
+      rowChanged = true
+      const displayValue = renderCellDisplayValue(value, cell.style, display, {
+        currency,
+      })
+      const previewValue = toCellPreviewDisplay(displayValue)
       const cellProperties = hasRenderableStyle(cell.style)
         ? { style: buildPreparedCellStyle(cell.style) }
         : undefined
 
       rowCells.set(cell.col, {
-        formula: cell.formula || "",
+        display,
+        displayValue,
+        previewValue,
+        formula,
         style: cell.style,
         value,
         cellProperties,
@@ -357,27 +398,21 @@ const applySheetRowsToPreparedGridData = (
       rowSource[String(cell.col)] = displayValue
     }
 
+    if (!rowChanged && (existingRowCells?.size ?? 0) !== rowCells.size) {
+      rowChanged = true
+    }
+
     preparedGridData.cellMatrix.set(row.index, rowCells)
-    preparedGridData.source[row.index - 1] = rowSource
+    preparedGridData.source[row.index - 1] = rowChanged
+      ? rowSource
+      : existingRowSource
   }
 }
 
 const buildColumns = (
   preparedGridData: PreparedGridData,
   manualColumnSizes: ColumnSizeMap,
-  kanbanRegions: KanbanRegion[],
-  dragHandleRange: {
-    rowStart: number
-    rowEnd: number
-    colStart: number
-    colEnd: number
-  } | null,
-  dropPreviewRange: {
-    rowStart: number
-    rowEnd: number
-    colStart: number
-    colEnd: number
-  } | null
+  cellPropertiesResolver: (row: number, col: number) => { style: GridCellStyle }
 ): ColumnRegular[] =>
   preparedGridData.columnLabels.map((label, idx) => {
     const col = idx + 1
@@ -386,15 +421,21 @@ const buildColumns = (
       prop: String(col),
       size: manualColumnSizes[col] ?? DEFAULT_COLUMN_WIDTH,
       sortable: false,
+      cellTemplate: (_createElement, schema: ColumnDataSchemaModel) => {
+        const prepared = preparedGridData.cellMatrix
+          .get(schema.rowIndex + 1)
+          ?.get(col)
+        if (prepared?.previewValue !== undefined) {
+          return prepared.previewValue
+        }
+        const text =
+          schema.value === undefined || schema.value === null
+            ? ""
+            : String(schema.value)
+        return toCellPreviewDisplay(text)
+      },
       cellProperties: (schema: ColumnDataSchemaModel) =>
-        resolveCellProperties(
-          schema.rowIndex + 1,
-          col,
-          preparedGridData,
-          kanbanRegions,
-          dragHandleRange,
-          dropPreviewRange
-        ),
+        cellPropertiesResolver(schema.rowIndex + 1, col),
       columnProperties: () => ({ title: label }),
     }
   })
@@ -491,12 +532,15 @@ const hasMultiCellRange = (range: RangeArea | null) => {
   return range.x !== range.x1 || range.y !== range.y1
 }
 
+const viewportWindowKey = (window: ViewportWindow) =>
+  `${window.rowStart}:${window.rowCount}:${window.colStart}:${window.colCount}`
+
 const readViewportWindow = (
   grid: GridViewportElement,
   sheet: Sheet
 ): { visible: ViewportWindow; fetch: ViewportWindow } => {
-  const maxRow = Math.max(sheet.maxRow, 1)
-  const maxCol = Math.max(sheet.maxCol, 1)
+  const maxRow = getGridRowCount(sheet.maxRow)
+  const maxCol = getGridColCount(sheet.maxCol)
   const rowStart = (grid.viewportRow?.get?.("start") ?? 0) + 1
   const rowEnd =
     (grid.viewportRow?.get?.("end") ?? Math.min(maxRow - 1, rowStart + 199)) + 1
@@ -546,7 +590,7 @@ const readViewportWindowFromScroll = (
     return base
   }
 
-  const maxRow = Math.max(sheet.maxRow, 1)
+  const maxRow = getGridRowCount(sheet.maxRow)
   const estimatedVisibleRows = Math.max(
     base.visible.rowCount,
     Math.ceil(grid.getBoundingClientRect().height / Math.max(rowSize, 1))
@@ -907,6 +951,10 @@ export function Grid() {
   const gridContainerRef = useRef<HTMLDivElement | null>(null)
   const preparedGridDataRef = useRef<PreparedGridData | null>(null)
   const viewportSyncFrameRef = useRef<number | null>(null)
+  const viewportScrollFrameRef = useRef<number | null>(null)
+  const viewportScrollEventRef = useRef<ViewPortScrollEvent | null>(null)
+  const lastVisibleWindowKeyRef = useRef("")
+  const lastFetchWindowKeyRef = useRef("")
   const lastRangeSelectionAtRef = useRef(0)
   const [menuContext, setMenuContext] = useState<GridContextMenuContext | null>(
     null
@@ -916,6 +964,12 @@ export function Grid() {
     payload: ClipboardPayload
   } | null>(null)
   const dragMoveStateRef = useRef<DragMoveState | null>(null)
+  const dragHandleRangeRef = useRef<{
+    rowStart: number
+    rowEnd: number
+    colStart: number
+    colEnd: number
+  } | null>(null)
   const dropPreviewRangeRef = useRef<{
     rowStart: number
     rowEnd: number
@@ -954,41 +1008,27 @@ export function Grid() {
   const [activeSnippetField, setActiveSnippetField] = useState<
     "subject" | "message"
   >("message")
-  const [kanbanBadgePositions, setKanbanBadgePositions] = useState<
-    KanbanBadgePosition[]
-  >([])
   const sendEmailSubjectRef = useRef<HTMLInputElement | null>(null)
   const sendEmailMessageRef = useRef<HTMLTextAreaElement | null>(null)
+  const kanbanRegionsForSheetRef = useRef<KanbanRegion[]>([])
+  const gridRowCount = sheet ? getGridRowCount(sheet.maxRow) : MIN_GRID_ROWS
+  const gridColCount = sheet ? getGridColCount(sheet.maxCol) : MIN_GRID_COLS
 
-  const refreshKanbanBadgePositions = useCallback(() => {
-    const grid = gridRef.current
-    const container = gridContainerRef.current
-    if (!grid || !container || kanbanRegionsForSheet.length === 0) {
-      setKanbanBadgePositions([])
-      return
-    }
-
-    const containerRect = container.getBoundingClientRect()
-    const next: KanbanBadgePosition[] = []
-
-    for (const region of kanbanRegionsForSheet) {
-      const rowIndex = region.range.rowStart - 1
-      const colIndex = region.range.colStart - 1
-      const selector = `.rgCell[data-rgRow="${rowIndex}"][data-rgCol="${colIndex}"], .rgCell[data-rgrow="${rowIndex}"][data-rgcol="${colIndex}"]`
-      const cell = grid.querySelector(selector)
-      if (!(cell instanceof HTMLElement)) {
-        continue
+  const applyViewport = useCallback(
+    (viewport: { visible: ViewportWindow; fetch: ViewportWindow }) => {
+      const visibleKey = viewportWindowKey(viewport.visible)
+      if (visibleKey !== lastVisibleWindowKeyRef.current) {
+        lastVisibleWindowKeyRef.current = visibleKey
+        setViewportWindow(viewport.visible)
       }
-      const rect = cell.getBoundingClientRect()
-      next.push({
-        id: region.id,
-        left: Math.round(rect.left - containerRect.left),
-        top: Math.round(rect.top - containerRect.top),
-      })
-    }
-
-    setKanbanBadgePositions(next)
-  }, [kanbanRegionsForSheet])
+      const fetchKey = viewportWindowKey(viewport.fetch)
+      if (fetchKey !== lastFetchWindowKeyRef.current) {
+        lastFetchWindowKeyRef.current = fetchKey
+        void ensureWindow(viewport.fetch)
+      }
+    },
+    [ensureWindow, setViewportWindow]
+  )
 
   const getActiveSelectionRange = useCallback(() => {
     if (selectedRange) {
@@ -1027,9 +1067,9 @@ export function Grid() {
           row,
           col,
           rowStart: 1,
-          rowCount: Math.max(1, sheet?.maxRow ?? 1),
+          rowCount: getGridRowCount(sheet?.maxRow ?? 1),
           colStart: 1,
-          colCount: Math.max(1, sheet?.maxCol ?? 1),
+          colCount: getGridColCount(sheet?.maxCol ?? 1),
         }
       }
       if (selectedRange) {
@@ -1083,8 +1123,8 @@ export function Grid() {
     const current = preparedGridDataRef.current
     if (
       !current ||
-      current.source.length !== Math.max(sheet.maxRow, 1) ||
-      current.columnLabels.length !== Math.max(sheet.maxCol, 1)
+      current.source.length !== getGridRowCount(sheet.maxRow) ||
+      current.columnLabels.length !== getGridColCount(sheet.maxCol)
     ) {
       preparedGridDataRef.current = createPreparedGridData(sheet)
     }
@@ -1108,6 +1148,31 @@ export function Grid() {
     return isSingleCell ? null : range
   }, [selectedCol, selectedRange, selectedRow])
 
+  useEffect(() => {
+    dragHandleRangeRef.current = dragHandleRange
+  }, [dragHandleRange])
+
+  useEffect(() => {
+    kanbanRegionsForSheetRef.current = kanbanRegionsForSheet
+  }, [kanbanRegionsForSheet])
+
+  const cellPropertiesResolver = useCallback(
+    (row: number, col: number) => {
+      if (!preparedGridData) {
+        return { style: {} }
+      }
+      return resolveCellProperties(
+        row,
+        col,
+        preparedGridData,
+        kanbanRegionsForSheetRef.current,
+        dragHandleRangeRef.current,
+        dropPreviewRangeRef.current
+      )
+    },
+    [preparedGridData]
+  )
+
   const columns = useMemo(() => {
     if (!preparedGridData) {
       return null
@@ -1115,17 +1180,9 @@ export function Grid() {
     return buildColumns(
       preparedGridData,
       manualColumnSizes,
-      kanbanRegionsForSheet,
-      dragHandleRange,
-      dropPreviewRange
+      cellPropertiesResolver
     )
-  }, [
-    dragHandleRange,
-    dropPreviewRange,
-    kanbanRegionsForSheet,
-    manualColumnSizes,
-    preparedGridData,
-  ])
+  }, [cellPropertiesResolver, manualColumnSizes, preparedGridData])
 
   const syncSelection = useCallback(
     (range: RangeArea | null) => {
@@ -1188,10 +1245,9 @@ export function Grid() {
         return
       }
       const viewport = readViewportWindow(grid, sheet)
-      setViewportWindow(viewport.visible)
-      void ensureWindow(viewport.fetch)
+      applyViewport(viewport)
     })
-  }, [ensureWindow, setViewportWindow, sheet])
+  }, [applyViewport, sheet])
 
   const syncGridDimensions = useCallback(async () => {
     const grid = gridRef.current
@@ -1211,7 +1267,7 @@ export function Grid() {
       undefined,
       true
     )
-    providers.dimension.setItemCount(Math.max(sheet.maxRow, 1), "rgRow")
+    providers.dimension.setItemCount(getGridRowCount(sheet.maxRow), "rgRow")
     providers.dimension.setViewPortCoordinate({ type: "rgRow", force: true })
   }, [preparedGridData, sheet])
 
@@ -1223,27 +1279,12 @@ export function Grid() {
         window.cancelAnimationFrame(viewportSyncFrameRef.current)
         viewportSyncFrameRef.current = null
       }
+      if (viewportScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(viewportScrollFrameRef.current)
+        viewportScrollFrameRef.current = null
+      }
     }
   }, [scheduleViewportSync, syncGridDimensions])
-
-  useEffect(() => {
-    const schedule = () => {
-      window.requestAnimationFrame(() => {
-        refreshKanbanBadgePositions()
-      })
-    }
-    schedule()
-    window.addEventListener("resize", schedule)
-    return () => {
-      window.removeEventListener("resize", schedule)
-    }
-  }, [
-    refreshKanbanBadgePositions,
-    rowSize,
-    manualColumnSizes,
-    kanbanRegionsForSheet,
-    preparedGridData,
-  ])
 
   const handleAfterFocus = useCallback(
     (event: CustomEvent<FocusAfterRenderEvent>) => {
@@ -1280,12 +1321,12 @@ export function Grid() {
       selectColumn(col)
       void gridRef.current?.setCellsFocus?.(
         { x: col - 1, y: 0 },
-        { x: col - 1, y: Math.max((sheet?.maxRow ?? 1) - 1, 0) },
+        { x: col - 1, y: Math.max(gridRowCount - 1, 0) },
         "rgCol",
         "rgRow"
       )
     },
-    [selectColumn, setSelectedRange, sheet?.maxRow]
+    [gridRowCount, selectColumn, setSelectedRange]
   )
 
   const handleSelectAll = useCallback(() => {
@@ -1294,13 +1335,13 @@ export function Grid() {
     void gridRef.current?.setCellsFocus?.(
       { x: 0, y: 0 },
       {
-        x: Math.max((sheet?.maxCol ?? 1) - 1, 0),
-        y: Math.max((sheet?.maxRow ?? 1) - 1, 0),
+        x: Math.max(gridColCount - 1, 0),
+        y: Math.max(gridRowCount - 1, 0),
       },
       "rgCol",
       "rgRow"
     )
-  }, [selectAll, setSelectedRange, sheet?.maxCol, sheet?.maxRow])
+  }, [gridColCount, gridRowCount, selectAll, setSelectedRange])
 
   useEffect(() => {
     const grid = gridRef.current
@@ -1476,38 +1517,40 @@ export function Grid() {
       if (sheetKey) {
         writePersistedManualWidths(sheetKey, next)
       }
-      window.requestAnimationFrame(() => {
-        refreshKanbanBadgePositions()
-      })
     },
-    [manualColumnSizes, refreshKanbanBadgePositions, sheetKey]
+    [manualColumnSizes, sheetKey]
   )
 
   const handleViewportScroll = useCallback(
     (event: CustomEvent<ViewPortScrollEvent>) => {
+      viewportScrollEventRef.current = event.detail
+      if (viewportScrollFrameRef.current !== null) {
+        return
+      }
       const grid = gridRef.current
       if (!grid || !sheet) {
         return
       }
-      const viewport = readViewportWindowFromScroll(
-        grid,
-        sheet,
-        event.detail,
-        rowSize
-      )
-      setViewportWindow(viewport.visible)
-      void ensureWindow(viewport.fetch)
-      window.requestAnimationFrame(() => {
-        refreshKanbanBadgePositions()
+      viewportScrollFrameRef.current = window.requestAnimationFrame(() => {
+        viewportScrollFrameRef.current = null
+        const latestEvent = viewportScrollEventRef.current
+        if (!latestEvent) {
+          return
+        }
+        const nextGrid = gridRef.current
+        if (!nextGrid || !sheet) {
+          return
+        }
+        const viewport = readViewportWindowFromScroll(
+          nextGrid,
+          sheet,
+          latestEvent,
+          rowSize
+        )
+        applyViewport(viewport)
       })
     },
-    [
-      ensureWindow,
-      refreshKanbanBadgePositions,
-      rowSize,
-      setViewportWindow,
-      sheet,
-    ]
+    [applyViewport, rowSize, sheet]
   )
 
   const handleCopy = useCallback(async () => {
@@ -2072,35 +2115,17 @@ export function Grid() {
               onAftergridinit={() => {
                 void syncGridDimensions()
                 scheduleViewportSync()
-                window.requestAnimationFrame(() => {
-                  refreshKanbanBadgePositions()
-                })
               }}
               onAftergridrender={() => {
-                void syncGridDimensions()
                 scheduleViewportSync()
-                window.requestAnimationFrame(() => {
-                  refreshKanbanBadgePositions()
-                })
               }}
-            onBeforefocuslost={(event) => {
-              if (!sendEmailDialogOpen && !extendKanbanDialogOpen) {
-                event.preventDefault()
-              }
-            }}
+              onBeforefocuslost={(event) => {
+                if (!sendEmailDialogOpen && !extendKanbanDialogOpen) {
+                  event.preventDefault()
+                }
+              }}
               onViewportscroll={handleViewportScroll}
             />
-            <div className="kanban-label-layer" aria-hidden="true">
-              {kanbanBadgePositions.map((badge) => (
-                <span
-                  key={badge.id}
-                  className="kanban-label-chip"
-                  style={{ left: `${badge.left}px`, top: `${badge.top}px` }}
-                >
-                  Kanban
-                </span>
-              ))}
-            </div>
           </div>
         </ContextMenuTrigger>
         {menuContext ? (
