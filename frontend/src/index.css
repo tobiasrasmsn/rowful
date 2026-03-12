@@ -350,7 +350,35 @@
   box-shadow: 0 0 0 1px var(--color-background);
 }
 
+.sheet-grid.formula-selection revogr-overlay-selection .selection-border-range {
+  border: 2px dashed #f97316 !important;
+  box-shadow: none !important;
+}
+
+.sheet-grid.formula-selection revogr-edit,
+.sheet-grid.formula-selection revogr-overlay-selection revogr-edit {
+  display: none !important;
+}
+
+.sheet-grid.formula-selection .temp-bg-range {
+  border: 1px dashed #f97316 !important;
+  background: transparent !important;
+}
+
+.sheet-grid.formula-selection .temp-bg-range > div {
+  display: none;
+}
+
 .sheet-grid .temp-bg-range,
 .sheet-grid .focused-cell {
   background: var(--primary-soft-strong);
+}
+
+.sheet-grid.formula-selection .focused-cell {
+  box-shadow:
+    -1px 0 0 #f97316 inset,
+    1px 0 0 #f97316 inset,
+    0 -1px 0 #f97316 inset,
+    0 1px 0 #f97316 inset !important;
+  background: transparent !important;
 }

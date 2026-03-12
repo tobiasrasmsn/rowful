@@ -5,6 +5,7 @@ import {
   TextEditor,
   defineCustomElements,
   type AfterEditEvent,
+  type BeforeSaveDataDetails,
   type ChangedRange,
   type ColumnDataSchemaModel,
   type ColumnRegular,
@@ -134,6 +135,10 @@ type EmailSendTarget = {
 type SnippetChoice = {
   key: string
   label: string
+}
+type FormulaSelectionState = {
+  targetRow: number
+  targetCol: number
 }
 
 const DEFAULT_COLUMN_WIDTH = 110
@@ -325,8 +330,8 @@ const resolveCellProperties = (
     colEnd: number
   } | null
 ) => {
-  const baseStyle =
-    preparedGridData.cellMatrix.get(row)?.get(col)?.cellProperties?.style ?? {}
+  const preparedCell = preparedGridData.cellMatrix.get(row)?.get(col)
+  const baseStyle = preparedCell?.cellProperties?.style ?? {}
   const kanbanStyle = buildKanbanBorderStyle(row, col, kanbanRegions)
   const dropPreviewStyle = buildDropPreviewBorderStyle(
     row,
@@ -334,11 +339,21 @@ const resolveCellProperties = (
     dropPreviewRange
   )
   const dragHandleStyle = buildDragHandleCursorStyle(row, col, dragHandleRange)
+  const formulaStyle = preparedCell?.formula
+    ? {
+        backgroundImage:
+          "linear-gradient(0deg, rgb(249 115 22 / 0.7), rgb(249 115 22 / 0.7))",
+        backgroundPosition: "0 0",
+        backgroundRepeat: "no-repeat",
+        backgroundSize: "1px 100%",
+      }
+    : {}
   const style = {
     ...baseStyle,
     ...kanbanStyle,
     ...dropPreviewStyle,
     ...dragHandleStyle,
+    ...formulaStyle,
   }
   return { style }
 }
@@ -649,6 +664,30 @@ const rangeAreaToSelection = (range: RangeArea) => ({
   colStart: range.x + 1,
   colEnd: range.x1 + 1,
 })
+
+const normalizeCellRange = (range: {
+  rowStart: number
+  rowEnd: number
+  colStart: number
+  colEnd: number
+}) => ({
+  rowStart: Math.min(range.rowStart, range.rowEnd),
+  rowEnd: Math.max(range.rowStart, range.rowEnd),
+  colStart: Math.min(range.colStart, range.colEnd),
+  colEnd: Math.max(range.colStart, range.colEnd),
+})
+
+const formatCellRangeAddress = (range: {
+  rowStart: number
+  rowEnd: number
+  colStart: number
+  colEnd: number
+}) => {
+  const normalized = normalizeCellRange(range)
+  const start = `${toColumnLabel(normalized.colStart)}${normalized.rowStart}`
+  const end = `${toColumnLabel(normalized.colEnd)}${normalized.rowEnd}`
+  return start === end ? start : `${start}:${end}`
+}
 
 const readNumericAttr = (element: Element, names: string[]) => {
   for (const name of names) {
@@ -1086,6 +1125,8 @@ export function Grid() {
   const [extendKanbanRegionId, setExtendKanbanRegionId] = useState<
     string | null
   >(null)
+  const [formulaSelection, setFormulaSelection] =
+    useState<FormulaSelectionState | null>(null)
   const [activeSnippetField, setActiveSnippetField] = useState<
     "subject" | "message"
   >("message")
@@ -1353,6 +1394,27 @@ export function Grid() {
       )
     )
   }, [clearSelectedValues, commitGridCellValue, getSelectionBounds])
+
+  const beginFormulaSelection = useCallback(
+    (row: number, col: number) => {
+      const cell = preparedGridDataRef.current?.cellMatrix.get(row)?.get(col)
+      const isEmpty =
+        !cell?.value.trim() && !cell?.formula.trim() && !cell?.display.trim()
+      if (!isEmpty) {
+        return false
+      }
+
+      selectCell(row, col, cell?.value ?? "", cell?.formula ?? "")
+      setSelectedRange(null)
+      setFormulaSelection({
+        targetRow: row,
+        targetCol: col,
+      })
+      toast("Select cells to sum into this formula cell.")
+      return true
+    },
+    [selectCell, setSelectedRange]
+  )
 
   const statusCellEditor = useMemo(() => {
     const editor: EditorCtr = (column, save) => new TextEditor(column, save)
@@ -1635,6 +1697,102 @@ export function Grid() {
     [ensureWindow, gridColCount, gridRowCount]
   )
 
+  const focusGridCell = useCallback(async (row: number, col: number) => {
+    const grid = gridRef.current
+    if (!grid) {
+      return
+    }
+    await grid.setCellsFocus?.(
+      { x: col - 1, y: row - 1 },
+      { x: col - 1, y: row - 1 },
+      "rgCol",
+      "rgRow"
+    )
+  }, [])
+
+  const cancelFormulaSelection = useCallback(() => {
+    if (!formulaSelection) {
+      return
+    }
+    const target = formulaSelection
+    const cell = preparedGridDataRef.current?.cellMatrix
+      .get(target.targetRow)
+      ?.get(target.targetCol)
+    setFormulaSelection(null)
+    setSelectedRange(null)
+    selectCell(
+      target.targetRow,
+      target.targetCol,
+      cell?.value ?? "",
+      cell?.formula ?? ""
+    )
+    void focusGridCell(target.targetRow, target.targetCol)
+  }, [focusGridCell, formulaSelection, selectCell, setSelectedRange])
+
+  const finalizeFormulaSelection = useCallback(
+    async (range: RangeArea | null) => {
+      if (!formulaSelection || !range) {
+        return false
+      }
+
+      const sourceRange = normalizeCellRange(rangeAreaToSelection(range))
+      const isTargetOnlySelection =
+        sourceRange.rowStart === formulaSelection.targetRow &&
+        sourceRange.rowEnd === formulaSelection.targetRow &&
+        sourceRange.colStart === formulaSelection.targetCol &&
+        sourceRange.colEnd === formulaSelection.targetCol
+      if (isTargetOnlySelection) {
+        return true
+      }
+      if (
+        isCellInsideRange(
+          {
+            row: formulaSelection.targetRow,
+            col: formulaSelection.targetCol,
+          },
+          sourceRange
+        )
+      ) {
+        toast.error("Select source cells outside the formula cell.")
+        return true
+      }
+
+      const target = formulaSelection
+      const formulaBody = `SUM(${formatCellRangeAddress(sourceRange)})`
+      setFormulaSelection(null)
+      setSelectedRange(null)
+      selectCell(target.targetRow, target.targetCol, "", formulaBody)
+      await commitGridCellValue(
+        target.targetRow,
+        target.targetCol,
+        `=${formulaBody}`
+      )
+      await focusGridCell(target.targetRow, target.targetCol)
+      return true
+    },
+    [
+      commitGridCellValue,
+      focusGridCell,
+      formulaSelection,
+      selectCell,
+      setSelectedRange,
+    ]
+  )
+
+  useEffect(() => {
+    if (!formulaSelection) {
+      return
+    }
+    const grid = gridRef.current
+    if (!grid) {
+      return
+    }
+    void (async () => {
+      const providers = await grid.getProviders?.()
+      providers?.selection.setEdit(false)
+    })()
+  }, [formulaSelection])
+
   useEffect(() => {
     const grid = gridRef.current
     if (!grid) {
@@ -1643,10 +1801,17 @@ export function Grid() {
 
     const handleSelectionChange = (event: Event) => {
       const detail = (event as CustomEvent<ChangedRange>).detail
+      if (formulaSelection) {
+        return
+      }
       syncSelection(detail.newRange)
     }
     const handleSetRange = (event: Event) => {
       const detail = (event as CustomEvent<RangeArea>).detail
+      if (formulaSelection) {
+        void finalizeFormulaSelection(detail)
+        return
+      }
       syncSelection(detail)
     }
     const handleSelectAllEvent = () => {
@@ -1685,6 +1850,11 @@ export function Grid() {
       const original = (event as CustomEvent<{ original?: KeyboardEvent }>)
         .detail?.original
       if (!original) {
+        return
+      }
+      if (formulaSelection && original.key === "Escape") {
+        original.preventDefault()
+        cancelFormulaSelection()
         return
       }
       const target = original.target
@@ -1780,7 +1950,10 @@ export function Grid() {
     }
   }, [
     clearKanbanAwareSelection,
+    cancelFormulaSelection,
     extendKanbanDialogOpen,
+    finalizeFormulaSelection,
+    formulaSelection,
     handleHeaderClick,
     handleNavigateToCell,
     handleRowHeaderClick,
@@ -1790,6 +1963,39 @@ export function Grid() {
     selectedRow,
     syncSelection,
   ])
+
+  const handleBeforeEditStart = useCallback(
+    (event: CustomEvent<BeforeSaveDataDetails>) => {
+      const detail = event.detail
+      if (!("prop" in detail) || typeof detail.rowIndex !== "number") {
+        return
+      }
+      const col = parseColNumber(detail.prop)
+      if (!col) {
+        return
+      }
+      const row = detail.rowIndex + 1
+      const preparedCell = preparedGridDataRef.current?.cellMatrix
+        .get(row)
+        ?.get(col)
+      if (preparedCell?.formula) {
+        detail.val = `=${preparedCell.formula}`
+        return
+      }
+      const value =
+        detail.val === undefined || detail.val === null
+          ? ""
+          : String(detail.val)
+      if (value !== "=") {
+        return
+      }
+      if (!beginFormulaSelection(row, col)) {
+        return
+      }
+      event.preventDefault()
+    },
+    [beginFormulaSelection]
+  )
 
   const handleAfterEdit = useCallback(
     (event: CustomEvent<AfterEditEvent>) => {
@@ -2418,7 +2624,11 @@ export function Grid() {
         <ContextMenuTrigger asChild>
           <div
             ref={gridContainerRef}
-            className="sheet-grid h-full"
+            className={
+              formulaSelection
+                ? "sheet-grid formula-selection h-full"
+                : "sheet-grid h-full"
+            }
             onPointerDownCapture={(event) => {
               if (event.button !== 0) {
                 return
@@ -2525,6 +2735,7 @@ export function Grid() {
               rowSize={rowSize}
               onAftercolumnresize={handleAfterColumnResize}
               onAfterfocus={handleAfterFocus}
+              onBeforeeditstart={handleBeforeEditStart}
               onAfteredit={handleAfterEdit}
               onAftergridinit={() => {
                 void syncGridDimensions()

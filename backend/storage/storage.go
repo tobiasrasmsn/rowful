@@ -1120,10 +1120,13 @@ func (s *Store) UpsertCell(workbookID, sheetName string, row, col int, value str
 	}
 	current.row = row
 	current.col = col
-	current.value = value
-	current.display = value
-	current.formula = ""
-	current.cellType = detectCellType(value)
+	current = applyInputToStoredCell(current, value)
+
+	allSheetCells, err := s.queryTargetCells(workbookID, sheetName, "sheet", 0, 0, nil)
+	if err != nil {
+		return err
+	}
+	cellsToPersist := buildRecalculatedCells(allSheetCells, []storedCell{current})
 
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -1131,7 +1134,7 @@ func (s *Store) UpsertCell(workbookID, sheetName string, row, col int, value str
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := s.upsertCellsTx(tx, workbookID, sheetName, []storedCell{current}); err != nil {
+	if err := s.upsertCellsTx(tx, workbookID, sheetName, cellsToPersist); err != nil {
 		return err
 	}
 	if row > meta.MaxRow || col > meta.MaxCol {
@@ -1243,23 +1246,6 @@ func (s *Store) ClearValues(workbookID, sheetName, mode string, row, col int, ce
 	if err := s.ensureSheetIndexed(workbookID, sheetName); err != nil {
 		return err
 	}
-	if mode != "cell" {
-		tx, err := s.db.Begin()
-		if err != nil {
-			return fmt.Errorf("begin tx: %w", err)
-		}
-		defer func() { _ = tx.Rollback() }()
-		if err := clearValuesTargetTx(tx, workbookID, sheetName, mode, row, col, cellRange); err != nil {
-			return err
-		}
-		if err := s.touchWorkbookTx(tx, workbookID); err != nil {
-			return err
-		}
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("commit tx: %w", err)
-		}
-		return nil
-	}
 	cells, meta, err := s.collectTargetCells(workbookID, sheetName, mode, row, col, cellRange, mode == "cell")
 	if err != nil {
 		return err
@@ -1270,7 +1256,16 @@ func (s *Store) ClearValues(workbookID, sheetName, mode string, row, col int, ce
 		cells[idx].formula = ""
 		cells[idx].cellType = "blank"
 	}
-	return s.persistCellsAndMeta(workbookID, sheetName, meta, cells)
+	allSheetCells, err := s.queryTargetCells(workbookID, sheetName, "sheet", 0, 0, nil)
+	if err != nil {
+		return err
+	}
+	return s.persistCellsAndMeta(
+		workbookID,
+		sheetName,
+		meta,
+		buildRecalculatedCells(allSheetCells, cells),
+	)
 }
 
 func (s *Store) DeleteRows(workbookID, sheetName string, start, count int) error {

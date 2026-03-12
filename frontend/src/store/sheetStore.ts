@@ -210,6 +210,14 @@ const toColumnLabel = (index: number) => {
 
 const toAddress = (row: number, col: number) => `${toColumnLabel(col)}${row}`
 
+const parseFormulaInput = (value: string) => {
+  if (!value.startsWith("=")) {
+    return null
+  }
+  const formula = value.slice(1).trim()
+  return formula ? formula : null
+}
+
 const hasMultiCellRange = (range: CellRange | null) => {
   if (!range) {
     return false
@@ -309,6 +317,15 @@ const readValueFromWindowPayload = (
   payload.sheet.rows
     .find((sheetRow) => sheetRow.index === row)
     ?.cells.find((cell) => cell.col === col)?.value ?? ""
+
+const readCellFromWindowPayload = (
+  payload: { sheet: Sheet },
+  row: number,
+  col: number
+) =>
+  payload.sheet.rows
+    .find((sheetRow) => sheetRow.index === row)
+    ?.cells.find((cell) => cell.col === col) ?? null
 
 const defaultKanbanTitleCol = (range: CellRange, statusCol: number) => {
   for (let col = range.colStart; col <= range.colEnd; col += 1) {
@@ -771,7 +788,7 @@ const persistCellSnapshot = async (
     sheet: sheetName,
     row,
     col,
-    value: snapshot.value ?? "",
+    value: snapshot.formula ? `=${snapshot.formula}` : (snapshot.value ?? ""),
   })
   await clearFormattingRange(workbookId, {
     sheet: sheetName,
@@ -1849,7 +1866,8 @@ export const useSheetStore = create<
 
     const existingCell = findCell(state.sheet, row, col)
     const numFmt = existingCell?.style?.numFmt
-    if (!isValueValidForNumFmt(value, numFmt)) {
+    const formula = parseFormulaInput(value)
+    if (!formula && !isValueValidForNumFmt(value, numFmt)) {
       set({
         error: `Invalid value for ${numFmtLabel(numFmt)} format at ${toAddress(row, col)}.`,
       })
@@ -1857,10 +1875,12 @@ export const useSheetStore = create<
     }
 
     const optimistic = upsertCellLocal(state.sheet, row, col, {
-      value,
-      display: value,
-      formula: "",
-      type: value.trim() ? "string" : "blank",
+      value: formula ? (existingCell?.value ?? "") : value,
+      display: formula
+        ? (existingCell?.display ?? existingCell?.value ?? "")
+        : value,
+      formula: formula ?? "",
+      type: formula ? "formula" : value.trim() ? "string" : "blank",
     })
     const historyEntry = buildHistoryEntry(
       state.sheet.name,
@@ -1877,7 +1897,11 @@ export const useSheetStore = create<
       historyFuture: [],
       selectedCell:
         state.selectedCell.address === toAddress(row, col)
-          ? { ...state.selectedCell, value, formula: "" }
+          ? {
+              ...state.selectedCell,
+              value: formula ? (existingCell?.value ?? "") : value,
+              formula: formula ?? "",
+            }
           : state.selectedCell,
       selectedRange: null,
       selectedStyle: sheetStyleFromSelection(
@@ -1903,9 +1927,22 @@ export const useSheetStore = create<
           state.workbook.id,
           requestPayload
         )
+        let mergedSheet = mergeSheetWindow(get().sheet, payload.sheet)
+        let workbook = payload.workbook
+        try {
+          const latest = get()
+          const refreshedViewport = await fetchSheetWindow(state.workbook.id, {
+            sheet: state.sheet.name,
+            ...latest.viewportWindow,
+          })
+          workbook = refreshedViewport.workbook
+          mergedSheet = mergeSheetWindow(get().sheet, refreshedViewport.sheet)
+        } catch {
+          // Fall back to the edited-cell response if the viewport refresh fails.
+        }
         set({
-          workbook: payload.workbook,
-          sheet: mergeSheetWindow(get().sheet, payload.sheet),
+          workbook,
+          sheet: mergedSheet,
         })
         scheduleRefreshFiles(() => get().refreshFiles())
         return
@@ -1930,7 +1967,15 @@ export const useSheetStore = create<
         row,
         col
       )
-      if (persistedValue === value) {
+      const persistedCell = readCellFromWindowPayload(
+        verificationPayload,
+        row,
+        col
+      )
+      if (
+        (!formula && persistedValue === value) ||
+        (formula && persistedCell?.formula === formula)
+      ) {
         set({
           workbook: verificationPayload.workbook,
           sheet: mergeSheetWindow(get().sheet, verificationPayload.sheet),
