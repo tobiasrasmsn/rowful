@@ -15,9 +15,7 @@ import {
 } from "./ui/dialog"
 import { Input } from "./ui/input"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs"
-import { KanbanSquareIcon, PlusSquareIcon } from "lucide-react"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowDataTransferHorizontalFreeIcons } from "@hugeicons/core-free-icons"
+import { PlusSquareIcon } from "lucide-react"
 
 type SheetTabsProps = {
   className?: string

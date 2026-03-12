@@ -2099,13 +2099,15 @@ export const useSheetStore = create<
     if (!state.sheet || !state.workbook) {
       return
     }
+    const sheet = state.sheet
+    const workbook = state.workbook
 
     const normalizedUpdates = normalizeCellUpdates(updates)
     if (normalizedUpdates.length === 0) {
       return
     }
 
-    let optimistic = state.sheet
+    let optimistic: Sheet = sheet
     const preparedUpdates: Array<{
       row: number
       col: number
@@ -2135,7 +2137,7 @@ export const useSheetStore = create<
           : update.value,
         formula: formula ?? "",
         type: formula ? "formula" : update.value.trim() ? "string" : "blank",
-      })
+      }) ?? optimistic
       preparedUpdates.push({
         ...update,
         formula,
@@ -2184,8 +2186,8 @@ export const useSheetStore = create<
           let attemptError: unknown = null
           for (let attempt = 0; attempt < 2; attempt += 1) {
             try {
-              await updateCellRequest(state.workbook.id, {
-                sheet: state.sheet.name,
+              await updateCellRequest(workbook.id, {
+                sheet: sheet.name,
                 row: update.row,
                 col: update.col,
                 value: update.value,
@@ -2206,8 +2208,8 @@ export const useSheetStore = create<
     let verifiedSheet: Sheet | null = null
     try {
       const latest = get()
-      const refreshedViewport = await fetchSheetWindow(state.workbook.id, {
-        sheet: state.sheet.name,
+      const refreshedViewport = await fetchSheetWindow(workbook.id, {
+        sheet: sheet.name,
         ...latest.viewportWindow,
       })
       verifiedSheet = mergeSheetWindow(get().sheet, refreshedViewport.sheet)
@@ -2235,13 +2237,10 @@ export const useSheetStore = create<
       )
       if (verificationWindow) {
         try {
-          const verificationPayload = await fetchSheetWindow(
-            state.workbook.id,
-            {
-              sheet: state.sheet.name,
-              ...verificationWindow,
-            }
-          )
+          const verificationPayload = await fetchSheetWindow(workbook.id, {
+            sheet: sheet.name,
+            ...verificationWindow,
+          })
           const mergedVerificationSheet = mergeSheetWindow(
             get().sheet,
             verificationPayload.sheet
