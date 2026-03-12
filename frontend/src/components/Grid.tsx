@@ -339,21 +339,11 @@ const resolveCellProperties = (
     dropPreviewRange
   )
   const dragHandleStyle = buildDragHandleCursorStyle(row, col, dragHandleRange)
-  const formulaStyle = preparedCell?.formula
-    ? {
-        backgroundImage:
-          "linear-gradient(0deg, rgb(249 115 22 / 0.7), rgb(249 115 22 / 0.7))",
-        backgroundPosition: "0 0",
-        backgroundRepeat: "no-repeat",
-        backgroundSize: "1px 100%",
-      }
-    : {}
   const style = {
     ...baseStyle,
     ...kanbanStyle,
     ...dropPreviewStyle,
     ...dragHandleStyle,
-    ...formulaStyle,
   }
   return { style }
 }
@@ -1043,6 +1033,7 @@ export function Grid() {
   const selectedCol = useSheetStore((state) => state.selectedCol)
   const setSelectedRange = useSheetStore((state) => state.setSelectedRange)
   const updateCell = useSheetStore((state) => state.updateCell)
+  const updateCells = useSheetStore((state) => state.updateCells)
   const clearSelectedValues = useSheetStore(
     (state) => state.clearSelectedValues
   )
@@ -2135,7 +2126,7 @@ export function Grid() {
         colEnd: number
       } | null
     ) => {
-      const tasks: Array<() => Promise<void>> = []
+      const updates: Array<{ row: number; col: number; value: string }> = []
       const baseRange = targetRange ?? {
         rowStart: row,
         rowEnd: row,
@@ -2164,12 +2155,18 @@ export function Grid() {
           const targetRow = baseRange.rowStart + rowOffset
           const targetCol = baseRange.colStart + colOffset
           const nextValue = cell.formula || cell.value || ""
-          tasks.push(() => commitGridCellValue(targetRow, targetCol, nextValue))
+          updates.push({
+            row: targetRow,
+            col: targetCol,
+            value: isKanbanStatusCell(targetRow, targetCol)
+              ? normalizeKanbanStatusValue(nextValue)
+              : nextValue,
+          })
         }
       }
-      await runCellUpdateBatch(tasks)
+      await updateCells(updates)
     },
-    [commitGridCellValue]
+    [isKanbanStatusCell, updateCells]
   )
 
   const handlePasteAt = useCallback(

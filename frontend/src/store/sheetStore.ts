@@ -65,6 +65,11 @@ type HistoryEntry = {
     after: Cell | null
   }>
 }
+type CellUpdateInput = {
+  row: number
+  col: number
+  value: string
+}
 
 type SheetState = {
   workbook: Workbook | null
@@ -106,6 +111,7 @@ type SheetState = {
     window: ViewportWindow & { sheetName?: string }
   ) => Promise<void>
   updateCell: (row: number, col: number, value: string) => Promise<void>
+  updateCells: (updates: CellUpdateInput[]) => Promise<void>
   selectCell: (row: number, col: number, value: string, formula: string) => void
   selectRow: (row: number) => void
   selectColumn: (col: number) => void
@@ -181,6 +187,7 @@ const DEFAULT_WINDOW: ViewportWindow = {
 const CACHE_ROW_PADDING = 800
 const CACHE_COL_PADDING = 24
 const MAX_HISTORY_RANGE_AREA = 4096
+const CELL_UPDATE_BATCH_CONCURRENCY = 4
 const SHEET_FONT_FAMILIES_STORAGE_KEY = "planar:sheet-font-families:v1"
 const DEFAULT_SHEET_FONT_FAMILY = "Calibri"
 let clearValuesInFlight = false
@@ -695,13 +702,12 @@ const collectHistoryCoordinates = (
   return []
 }
 
-const buildHistoryEntry = (
+const buildHistoryEntryForCoordinates = (
   sheetName: string,
   beforeSheet: Sheet | null,
   afterSheet: Sheet | null,
-  target: SelectionTarget
+  coords: Array<{ row: number; col: number }>
 ): HistoryEntry | null => {
-  const coords = collectHistoryCoordinates(beforeSheet ?? afterSheet, target)
   if (coords.length === 0) {
     return null
   }
@@ -726,6 +732,21 @@ const buildHistoryEntry = (
     sheetName,
     cells,
   }
+}
+
+const buildHistoryEntry = (
+  sheetName: string,
+  beforeSheet: Sheet | null,
+  afterSheet: Sheet | null,
+  target: SelectionTarget
+): HistoryEntry | null => {
+  const coords = collectHistoryCoordinates(beforeSheet ?? afterSheet, target)
+  return buildHistoryEntryForCoordinates(
+    sheetName,
+    beforeSheet,
+    afterSheet,
+    coords
+  )
 }
 
 const restoreHistoryCellsLocal = (
@@ -1090,6 +1111,83 @@ const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms)
   })
+
+const normalizeCellUpdates = (updates: CellUpdateInput[]) => {
+  const deduped = new Map<string, CellUpdateInput>()
+  for (const update of updates) {
+    if (
+      !Number.isInteger(update.row) ||
+      !Number.isInteger(update.col) ||
+      update.row < 1 ||
+      update.col < 1
+    ) {
+      continue
+    }
+    deduped.set(`${update.row}:${update.col}`, {
+      row: update.row,
+      col: update.col,
+      value: update.value,
+    })
+  }
+  return Array.from(deduped.values())
+}
+
+const buildCellUpdateVerificationWindow = (
+  updates: Array<{ row: number; col: number }>
+) => {
+  if (updates.length === 0) {
+    return null
+  }
+
+  let rowStart = updates[0].row
+  let rowEnd = updates[0].row
+  let colStart = updates[0].col
+  let colEnd = updates[0].col
+
+  for (const update of updates.slice(1)) {
+    rowStart = Math.min(rowStart, update.row)
+    rowEnd = Math.max(rowEnd, update.row)
+    colStart = Math.min(colStart, update.col)
+    colEnd = Math.max(colEnd, update.col)
+  }
+
+  return {
+    rowStart,
+    rowCount: rowEnd - rowStart + 1,
+    colStart,
+    colCount: colEnd - colStart + 1,
+  }
+}
+
+const cellMatchesPersistedUpdate = (
+  sheet: Sheet | null,
+  update: { row: number; col: number; value: string; formula: string | null }
+) => {
+  const persistedCell = findCell(sheet, update.row, update.col)
+  if (update.formula) {
+    return persistedCell?.formula === update.formula
+  }
+  return (persistedCell?.value ?? "") === update.value
+}
+
+const runTaskBatch = async (
+  tasks: Array<() => Promise<void>>,
+  concurrency = CELL_UPDATE_BATCH_CONCURRENCY
+) => {
+  if (tasks.length === 0) {
+    return
+  }
+  const safeConcurrency = Math.max(1, Math.min(concurrency, tasks.length))
+  let nextTaskIndex = 0
+  const workers = Array.from({ length: safeConcurrency }, async () => {
+    while (nextTaskIndex < tasks.length) {
+      const taskIndex = nextTaskIndex
+      nextTaskIndex += 1
+      await tasks[taskIndex]()
+    }
+  })
+  await Promise.all(workers)
+}
 
 const persistKanbanRegions = async (
   workbookId: string,
@@ -1992,8 +2090,190 @@ export const useSheetStore = create<
       error:
         attemptError instanceof Error
           ? attemptError.message
-          : "Failed to persist cell change",
+        : "Failed to persist cell change",
     })
+  },
+
+  updateCells: async (updates) => {
+    const state = get()
+    if (!state.sheet || !state.workbook) {
+      return
+    }
+
+    const normalizedUpdates = normalizeCellUpdates(updates)
+    if (normalizedUpdates.length === 0) {
+      return
+    }
+
+    let optimistic = state.sheet
+    const preparedUpdates: Array<{
+      row: number
+      col: number
+      value: string
+      formula: string | null
+      selectedValue: string
+    }> = []
+
+    for (const update of normalizedUpdates) {
+      const existingCell = findCell(optimistic, update.row, update.col)
+      const numFmt = existingCell?.style?.numFmt
+      const formula = parseFormulaInput(update.value)
+      if (!formula && !isValueValidForNumFmt(update.value, numFmt)) {
+        set({
+          error: `Invalid value for ${numFmtLabel(numFmt)} format at ${toAddress(update.row, update.col)}.`,
+        })
+        return
+      }
+
+      const selectedValue = formula
+        ? (existingCell?.value ?? "")
+        : update.value
+      optimistic = upsertCellLocal(optimistic, update.row, update.col, {
+        value: selectedValue,
+        display: formula
+          ? (existingCell?.display ?? existingCell?.value ?? "")
+          : update.value,
+        formula: formula ?? "",
+        type: formula ? "formula" : update.value.trim() ? "string" : "blank",
+      })
+      preparedUpdates.push({
+        ...update,
+        formula,
+        selectedValue,
+      })
+    }
+
+    const historyEntry = buildHistoryEntryForCoordinates(
+      state.sheet.name,
+      state.sheet,
+      optimistic,
+      preparedUpdates.map(({ row, col }) => ({ row, col }))
+    )
+    const selectedCellUpdate = preparedUpdates.find(
+      (update) =>
+        state.selectedCell.address === toAddress(update.row, update.col)
+    )
+
+    set({
+      sheet: optimistic,
+      historyPast: historyEntry
+        ? [...state.historyPast, historyEntry]
+        : state.historyPast,
+      historyFuture: [],
+      selectedCell: selectedCellUpdate
+        ? {
+            ...state.selectedCell,
+            value: selectedCellUpdate.selectedValue,
+            formula: selectedCellUpdate.formula ?? "",
+          }
+        : state.selectedCell,
+      selectedStyle: sheetStyleFromSelection(
+        optimistic,
+        state.selectionMode,
+        state.selectedRow,
+        state.selectedCol,
+        state.selectedRange
+      ),
+      error: null,
+    })
+
+    const failures: unknown[] = []
+    await runTaskBatch(
+      preparedUpdates.map(
+        (update) => async () => {
+          let attemptError: unknown = null
+          for (let attempt = 0; attempt < 2; attempt += 1) {
+            try {
+              await updateCellRequest(state.workbook.id, {
+                sheet: state.sheet.name,
+                row: update.row,
+                col: update.col,
+                value: update.value,
+              })
+              return
+            } catch (error) {
+              attemptError = error
+              if (attempt < 1) {
+                await sleep(120)
+              }
+            }
+          }
+          failures.push(attemptError)
+        }
+      )
+    )
+
+    let verifiedSheet: Sheet | null = null
+    try {
+      const latest = get()
+      const refreshedViewport = await fetchSheetWindow(state.workbook.id, {
+        sheet: state.sheet.name,
+        ...latest.viewportWindow,
+      })
+      verifiedSheet = mergeSheetWindow(get().sheet, refreshedViewport.sheet)
+      set({
+        workbook: refreshedViewport.workbook,
+        sheet: verifiedSheet,
+      })
+    } catch {
+      // Fall back to the optimistic state if the viewport refresh fails.
+    }
+
+    if (failures.length > 0) {
+      const matchesRefreshedSheet =
+        verifiedSheet &&
+        preparedUpdates.every((update) =>
+          cellMatchesPersistedUpdate(verifiedSheet, update)
+        )
+      if (matchesRefreshedSheet) {
+        scheduleRefreshFiles(() => get().refreshFiles())
+        return
+      }
+
+      const verificationWindow = buildCellUpdateVerificationWindow(
+        preparedUpdates
+      )
+      if (verificationWindow) {
+        try {
+          const verificationPayload = await fetchSheetWindow(
+            state.workbook.id,
+            {
+              sheet: state.sheet.name,
+              ...verificationWindow,
+            }
+          )
+          const mergedVerificationSheet = mergeSheetWindow(
+            get().sheet,
+            verificationPayload.sheet
+          )
+          const allUpdatesPersisted = preparedUpdates.every((update) =>
+            cellMatchesPersistedUpdate(mergedVerificationSheet, update)
+          )
+          if (allUpdatesPersisted) {
+            set({
+              workbook: verificationPayload.workbook,
+              sheet: mergedVerificationSheet,
+              error: null,
+            })
+            scheduleRefreshFiles(() => get().refreshFiles())
+            return
+          }
+        } catch {
+          // Ignore verification failures and surface the original persistence error.
+        }
+      }
+
+      const firstError = failures[0]
+      set({
+        error:
+          firstError instanceof Error
+            ? firstError.message
+            : "Failed to persist cell changes",
+      })
+      return
+    }
+
+    scheduleRefreshFiles(() => get().refreshFiles())
   },
 
   selectCell: (row, col, value, formula) => {
