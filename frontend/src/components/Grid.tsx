@@ -712,6 +712,28 @@ const parseClipboardText = (text: string) => {
   return lines.map((line) => line.split("\t"))
 }
 
+const getClosestWholeRepeatCount = (
+  selectionCount: number,
+  payloadCount: number
+) => {
+  const safeSelectionCount = Math.max(1, selectionCount)
+  const safePayloadCount = Math.max(1, payloadCount)
+  const lowerRepeat = Math.max(
+    1,
+    Math.floor(safeSelectionCount / safePayloadCount)
+  )
+  const upperRepeat = Math.max(
+    1,
+    Math.ceil(safeSelectionCount / safePayloadCount)
+  )
+  const lowerCount = lowerRepeat * safePayloadCount
+  const upperCount = upperRepeat * safePayloadCount
+
+  return safeSelectionCount - lowerCount <= upperCount - safeSelectionCount
+    ? lowerRepeat
+    : upperRepeat
+}
+
 const runCellUpdateBatch = async (
   tasks: Array<() => Promise<void>>,
   concurrency = CELL_UPDATE_BATCH_CONCURRENCY
@@ -1031,6 +1053,7 @@ export function Grid() {
   const createKanbanFromSelection = useSheetStore(
     (state) => state.createKanbanFromSelection
   )
+  const createKanbanCard = useSheetStore((state) => state.createKanbanCard)
   const extendKanbanRegion = useSheetStore((state) => state.extendKanbanRegion)
   const insertRowsAt = useSheetStore((state) => state.insertRowsAt)
   const insertColsAt = useSheetStore((state) => state.insertColsAt)
@@ -2086,14 +2109,45 @@ export function Grid() {
   }, [clearSelectedValues, handleCopy])
 
   const applyClipboardPayload = useCallback(
-    async (row: number, col: number, payload: ClipboardPayload) => {
+    async (
+      row: number,
+      col: number,
+      payload: ClipboardPayload,
+      targetRange?: {
+        rowStart: number
+        rowEnd: number
+        colStart: number
+        colEnd: number
+      } | null
+    ) => {
       const tasks: Array<() => Promise<void>> = []
-      for (let rowOffset = 0; rowOffset < payload.rowCount; rowOffset += 1) {
-        const line = payload.cells[rowOffset] ?? []
-        for (let colOffset = 0; colOffset < payload.colCount; colOffset += 1) {
-          const cell = line[colOffset] ?? { value: "", formula: "" }
-          const targetRow = row + rowOffset
-          const targetCol = col + colOffset
+      const baseRange = targetRange ?? {
+        rowStart: row,
+        rowEnd: row,
+        colStart: col,
+        colEnd: col,
+      }
+      const repeatRowCount = getClosestWholeRepeatCount(
+        baseRange.rowEnd - baseRange.rowStart + 1,
+        payload.rowCount
+      )
+      const repeatColCount = getClosestWholeRepeatCount(
+        baseRange.colEnd - baseRange.colStart + 1,
+        payload.colCount
+      )
+      const totalRows = Math.max(1, payload.rowCount) * repeatRowCount
+      const totalCols = Math.max(1, payload.colCount) * repeatColCount
+
+      for (let rowOffset = 0; rowOffset < totalRows; rowOffset += 1) {
+        const line =
+          payload.cells[rowOffset % Math.max(1, payload.rowCount)] ?? []
+        for (let colOffset = 0; colOffset < totalCols; colOffset += 1) {
+          const cell = line[colOffset % Math.max(1, payload.colCount)] ?? {
+            value: "",
+            formula: "",
+          }
+          const targetRow = baseRange.rowStart + rowOffset
+          const targetCol = baseRange.colStart + colOffset
           const nextValue = cell.formula || cell.value || ""
           tasks.push(() => commitGridCellValue(targetRow, targetCol, nextValue))
         }
@@ -2108,6 +2162,18 @@ export function Grid() {
       if (typeof navigator === "undefined" || !navigator.clipboard) {
         return
       }
+      const gridSelection = await gridRef.current?.getSelectedRange?.()
+      const liveSelectionRange =
+        gridSelection && hasMultiCellRange(gridSelection)
+          ? rangeAreaToSelection(gridSelection)
+          : null
+      const fallbackSelectionRange = getActiveSelectionRange()
+      const targetRange = isCellInsideRange(
+        { row, col },
+        liveSelectionRange ?? fallbackSelectionRange
+      )
+        ? (liveSelectionRange ?? fallbackSelectionRange)
+        : null
       if (navigator.clipboard.read) {
         try {
           const items = await navigator.clipboard.read()
@@ -2124,7 +2190,7 @@ export function Grid() {
               Number.isFinite(parsed.colCount) &&
               Array.isArray(parsed.cells)
             ) {
-              await applyClipboardPayload(row, col, parsed)
+              await applyClipboardPayload(row, col, parsed, targetRange)
               return
             }
           }
@@ -2142,7 +2208,7 @@ export function Grid() {
         internal.payload.rowCount > 0 &&
         text === internal.plainText
       ) {
-        await applyClipboardPayload(row, col, internal.payload)
+        await applyClipboardPayload(row, col, internal.payload, targetRange)
         return
       }
 
@@ -2157,9 +2223,9 @@ export function Grid() {
           }))
         ),
       }
-      await applyClipboardPayload(row, col, payload)
+      await applyClipboardPayload(row, col, payload, targetRange)
     },
-    [applyClipboardPayload]
+    [applyClipboardPayload, getActiveSelectionRange]
   )
 
   const handleMoveSelectionTo = useCallback(
@@ -2303,6 +2369,26 @@ export function Grid() {
       ) ?? null
     )
   }, [kanbanRegionsForSheet, menuContext])
+
+  const handleCreateCardFromGrid = useCallback(async () => {
+    if (!activeKanbanRegionAtMenu) {
+      return
+    }
+
+    const nextStatus =
+      menuContext && menuContext.row > activeKanbanRegionAtMenu.range.rowStart
+        ? (preparedGridDataRef.current?.cellMatrix
+            .get(menuContext.row)
+            ?.get(activeKanbanRegionAtMenu.statusCol)?.value ?? "")
+        : ""
+
+    const row = await createKanbanCard(activeKanbanRegionAtMenu.id, {
+      status: nextStatus,
+    })
+    if (row === null) {
+      toast.error("Could not create a new card.")
+    }
+  }, [activeKanbanRegionAtMenu, createKanbanCard, menuContext])
 
   const rowEmailTargetAtMenu = useMemo(() => {
     if (!menuContext || !preparedGridData) {
@@ -2744,6 +2830,13 @@ export function Grid() {
             {activeKanbanRegionAtMenu ? (
               <>
                 <ContextMenuSeparator />
+                <ContextMenuItem
+                  onSelect={() => {
+                    void handleCreateCardFromGrid()
+                  }}
+                >
+                  Add Kanban Card
+                </ContextMenuItem>
                 <ContextMenuItem
                   onSelect={() => {
                     setExtendKanbanRegionId(activeKanbanRegionAtMenu.id)

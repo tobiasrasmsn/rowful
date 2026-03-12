@@ -215,6 +215,7 @@ export function KanbanView({ region }: KanbanViewProps) {
   const setKanbanCardColorConfig = useSheetStore(
     (state) => state.setKanbanCardColorConfig
   )
+  const createKanbanCard = useSheetStore((state) => state.createKanbanCard)
   const [draggingRow, setDraggingRow] = useState<number | null>(null)
   const [draggingStatus, setDraggingStatus] = useState<string | null>(null)
   const [dragPreview, setDragPreview] = useState<{
@@ -227,6 +228,7 @@ export function KanbanView({ region }: KanbanViewProps) {
     y: number
   } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [creatingStatus, setCreatingStatus] = useState<string | null>(null)
 
   const matrix = useMemo(() => {
     const data = new Map<number, Map<number, string>>()
@@ -391,6 +393,20 @@ export function KanbanView({ region }: KanbanViewProps) {
     void moveKanbanCard(region.id, payload.row, targetStatus, targetIndex)
     return true
   }
+
+  const handleCreateCard = useCallback(
+    async (status: string) => {
+      setCreatingStatus(status)
+      const row = await createKanbanCard(region.id, {
+        status: status === "No status" ? "" : status,
+      })
+      setCreatingStatus((current) => (current === status ? null : current))
+      if (row === null) {
+        toast.error("Could not create a new card.")
+      }
+    },
+    [createKanbanCard, region.id]
+  )
 
   const autoAssignCardColors = useCallback((values: string[]) => {
     const map: Record<string, CardColor> = {}
@@ -773,51 +789,71 @@ export function KanbanView({ region }: KanbanViewProps) {
                 }}
               >
                 <div className="border-b border-border bg-muted/40 px-3 py-2 text-sm font-medium">
-                  <span
-                    className="mr-2 inline-block cursor-grab text-muted-foreground"
-                    draggable
-                    onDragStart={(event) => {
-                      setDraggingStatus(status)
-                      event.dataTransfer.effectAllowed = "move"
-                      event.dataTransfer.setData(
-                        "application/json",
-                        JSON.stringify({
-                          kind: "column",
-                          status,
-                        } satisfies DragColumnPayload)
-                      )
-                    }}
-                    onDragEnd={() => setDraggingStatus(null)}
-                  >
-                    <HugeiconsIcon icon={DragDropIcon} className="size-4" />
-                  </span>
-                  <span>{status}</span>
-                  {status !== "No status" ? (
-                    <button
-                      type="button"
-                      className="float-right rounded px-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                      disabled={!canDeleteStatus}
-                      title={
-                        canDeleteStatus
-                          ? `Delete "${status}" column`
-                          : "Status can only be deleted when no cards use it"
-                      }
-                      onClick={() => {
-                        if (cards.length > 0) {
-                          toast.error(
-                            "Move or clear all cards in this status before deleting the column."
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span
+                        className="inline-block cursor-grab text-muted-foreground"
+                        draggable
+                        onDragStart={(event) => {
+                          setDraggingStatus(status)
+                          event.dataTransfer.effectAllowed = "move"
+                          event.dataTransfer.setData(
+                            "application/json",
+                            JSON.stringify({
+                              kind: "column",
+                              status,
+                            } satisfies DragColumnPayload)
                           )
-                          return
-                        }
-                        void setKanbanStatusOrder(
-                          region.id,
-                          region.statusOrder.filter((item) => item !== status)
-                        )
-                      }}
-                    >
-                      x
-                    </button>
-                  ) : null}
+                        }}
+                        onDragEnd={() => setDraggingStatus(null)}
+                      >
+                        <HugeiconsIcon icon={DragDropIcon} className="size-4" />
+                      </span>
+                      <span className="truncate">{status}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        disabled={creatingStatus === status}
+                        onClick={() => {
+                          void handleCreateCard(status)
+                        }}
+                      >
+                        Add card
+                      </Button>
+                      {status !== "No status" ? (
+                        <button
+                          type="button"
+                          className="rounded px-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                          disabled={!canDeleteStatus}
+                          title={
+                            canDeleteStatus
+                              ? `Delete "${status}" column`
+                              : "Status can only be deleted when no cards use it"
+                          }
+                          onClick={() => {
+                            if (cards.length > 0) {
+                              toast.error(
+                                "Move or clear all cards in this status before deleting the column."
+                              )
+                              return
+                            }
+                            void setKanbanStatusOrder(
+                              region.id,
+                              region.statusOrder.filter(
+                                (item) => item !== status
+                              )
+                            )
+                          }}
+                        >
+                          x
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
                 <div
                   className="flex min-h-16 flex-col gap-2 p-2"

@@ -21,13 +21,11 @@ export function FileTabsBar({
   const isLoading = useSheetStore((state) => state.isLoading)
   const isFilesRoute = location.pathname === "/files"
   const title =
-    !isFilesRoute && workbook
-      ? getDisplayFileName(workbook.fileName)
-      : APP_NAME
+    !isFilesRoute && workbook ? getDisplayFileName(workbook.fileName) : APP_NAME
 
   return (
     <div className={cn(compact ? "px-0 py-0" : "px-2 py-2", className)}>
-      <div className="flex min-w-0 items-center gap-2 px-3 py-2 text-sm text-foreground">
+      <div className="flex min-w-0 items-center gap-2 px-3 py-2 text-sm text-foreground/90">
         <span className="block w-fit truncate text-lg font-medium">
           {title}
         </span>

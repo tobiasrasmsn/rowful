@@ -102,7 +102,9 @@ type SheetState = {
   deleteColsAt: (start?: number, count?: number) => Promise<void>
   renameSheet: (oldName: string, newName: string) => Promise<void>
   deleteSheet: (sheetName: string) => Promise<void>
-  ensureWindow: (window: ViewportWindow & { sheetName?: string }) => Promise<void>
+  ensureWindow: (
+    window: ViewportWindow & { sheetName?: string }
+  ) => Promise<void>
   updateCell: (row: number, col: number, value: string) => Promise<void>
   selectCell: (row: number, col: number, value: string, formula: string) => void
   selectRow: (row: number) => void
@@ -126,19 +128,42 @@ type SheetState = {
   saveEmailSettings: (email: SMTPSettings) => Promise<void>
   setSheetFontFamily: (fontFamily: string) => void
   setViewportWindow: (window: ViewportWindow) => void
-  createKanbanFromSelection: (statusCol: number, name?: string) => Promise<KanbanRegion | null>
-  extendKanbanRegion: (regionId: string, axis: "rows" | "cols", amount?: number) => Promise<void>
-  setKanbanStatusOrder: (regionId: string, statusOrder: string[]) => Promise<void>
+  createKanbanFromSelection: (
+    statusCol: number,
+    name?: string
+  ) => Promise<KanbanRegion | null>
+  extendKanbanRegion: (
+    regionId: string,
+    axis: "rows" | "cols",
+    amount?: number
+  ) => Promise<void>
+  setKanbanStatusOrder: (
+    regionId: string,
+    statusOrder: string[]
+  ) => Promise<void>
   setKanbanTitleCol: (regionId: string, titleCol: number) => Promise<void>
-  setKanbanVisibleCols: (regionId: string, visibleCols: number[]) => Promise<void>
+  setKanbanVisibleCols: (
+    regionId: string,
+    visibleCols: number[]
+  ) => Promise<void>
   setKanbanCardColorConfig: (
     regionId: string,
     patch: Partial<{
       cardColorEnabled: boolean
       cardColorByCol: number
-      cardColorMap: Record<string, "none" | "green" | "red" | "yellow" | "purple">
+      cardColorMap: Record<
+        string,
+        "none" | "green" | "red" | "yellow" | "purple"
+      >
     }>
   ) => Promise<void>
+  createKanbanCard: (
+    regionId: string,
+    options?: {
+      status?: string
+      title?: string
+    }
+  ) => Promise<number | null>
   moveKanbanCard: (
     regionId: string,
     sourceRow: number,
@@ -280,7 +305,10 @@ const readValueFromWindowPayload = (
   payload: { sheet: Sheet },
   row: number,
   col: number
-) => payload.sheet.rows.find((sheetRow) => sheetRow.index === row)?.cells.find((cell) => cell.col === col)?.value ?? ""
+) =>
+  payload.sheet.rows
+    .find((sheetRow) => sheetRow.index === row)
+    ?.cells.find((cell) => cell.col === col)?.value ?? ""
 
 const defaultKanbanTitleCol = (range: CellRange, statusCol: number) => {
   for (let col = range.colStart; col <= range.colEnd; col += 1) {
@@ -306,7 +334,9 @@ const normalizeKanbanCardColorMap = (
     return {}
   }
   const result: Record<string, KanbanCardColor> = {}
-  for (const [key, rawValue] of Object.entries(map as Record<string, unknown>)) {
+  for (const [key, rawValue] of Object.entries(
+    map as Record<string, unknown>
+  )) {
     if (typeof key !== "string") {
       continue
     }
@@ -347,19 +377,75 @@ const normalizeKanbanRegions = (regions: KanbanRegion[]): KanbanRegion[] =>
         ? Array.from(
             new Set(
               region.visibleCols.filter(
-                (col) => typeof col === "number" && col >= region.range.colStart && col <= region.range.colEnd
+                (col) =>
+                  typeof col === "number" &&
+                  col >= region.range.colStart &&
+                  col <= region.range.colEnd
               )
             )
           )
         : allCols,
       cardColorEnabled: Boolean(region.cardColorEnabled),
       cardColorByCol:
-        safeColorByCol >= region.range.colStart && safeColorByCol <= region.range.colEnd
+        safeColorByCol >= region.range.colStart &&
+        safeColorByCol <= region.range.colEnd
           ? safeColorByCol
           : safeTitleCol,
       cardColorMap: normalizeKanbanCardColorMap(region.cardColorMap),
     }
   })
+
+const insertKanbanRowsLocally = (
+  regions: KanbanRegion[],
+  options: {
+    sheetName: string
+    regionId: string
+    startRow: number
+    count: number
+    statusToAdd?: string
+  }
+) =>
+  normalizeKanbanRegions(
+    regions.map((region) => {
+      if (region.sheetName !== options.sheetName) {
+        return region
+      }
+
+      let nextRegion = region
+
+      if (region.id === options.regionId) {
+        nextRegion = {
+          ...region,
+          range: {
+            ...region.range,
+            rowEnd: region.range.rowEnd + options.count,
+          },
+          statusOrder: options.statusToAdd
+            ? Array.from(new Set([...region.statusOrder, options.statusToAdd]))
+            : region.statusOrder,
+        }
+      } else if (options.startRow <= region.range.rowStart) {
+        nextRegion = {
+          ...region,
+          range: {
+            ...region.range,
+            rowStart: region.range.rowStart + options.count,
+            rowEnd: region.range.rowEnd + options.count,
+          },
+        }
+      } else if (options.startRow <= region.range.rowEnd) {
+        nextRegion = {
+          ...region,
+          range: {
+            ...region.range,
+            rowEnd: region.range.rowEnd + options.count,
+          },
+        }
+      }
+
+      return nextRegion
+    })
+  )
 
 const mergeRows = (currentRows: Sheet["rows"], incomingRows: Sheet["rows"]) => {
   const rowMap = new Map<number, Map<number, Cell>>()
@@ -405,7 +491,12 @@ const upsertCellLocal = (
   sheet: Sheet | null,
   row: number,
   col: number,
-  patch: Partial<Cell> & { value?: string; display?: string; formula?: string; type?: string }
+  patch: Partial<Cell> & {
+    value?: string
+    display?: string
+    formula?: string
+    type?: string
+  }
 ) => {
   if (!sheet) {
     return sheet
@@ -519,8 +610,16 @@ const patchLoadedCells = (
       visit(target.row, cell.col)
     }
   } else if (target.mode === "range" && target.range) {
-    for (let row = target.range.rowStart; row <= target.range.rowEnd; row += 1) {
-      for (let col = target.range.colStart; col <= target.range.colEnd; col += 1) {
+    for (
+      let row = target.range.rowStart;
+      row <= target.range.rowEnd;
+      row += 1
+    ) {
+      for (
+        let col = target.range.colStart;
+        col <= target.range.colEnd;
+        col += 1
+      ) {
         visit(row, col)
       }
     }
@@ -542,7 +641,10 @@ const selectionArea = (target: SelectionTarget) => {
   return target.mode === "cell" ? 1 : Number.POSITIVE_INFINITY
 }
 
-const collectHistoryCoordinates = (sheet: Sheet | null, target: SelectionTarget) => {
+const collectHistoryCoordinates = (
+  sheet: Sheet | null,
+  target: SelectionTarget
+) => {
   if (!sheet) {
     return [] as Array<{ row: number; col: number }>
   }
@@ -551,10 +653,22 @@ const collectHistoryCoordinates = (sheet: Sheet | null, target: SelectionTarget)
     return [{ row: target.row, col: target.col }]
   }
 
-  if (target.mode === "range" && target.range && selectionArea(target) <= MAX_HISTORY_RANGE_AREA) {
+  if (
+    target.mode === "range" &&
+    target.range &&
+    selectionArea(target) <= MAX_HISTORY_RANGE_AREA
+  ) {
     const coords: Array<{ row: number; col: number }> = []
-    for (let row = target.range.rowStart; row <= target.range.rowEnd; row += 1) {
-      for (let col = target.range.colStart; col <= target.range.colEnd; col += 1) {
+    for (
+      let row = target.range.rowStart;
+      row <= target.range.rowEnd;
+      row += 1
+    ) {
+      for (
+        let col = target.range.colStart;
+        col <= target.range.colEnd;
+        col += 1
+      ) {
         coords.push({ row, col })
       }
     }
@@ -582,7 +696,9 @@ const buildHistoryEntry = (
       before: cloneCell(findCell(beforeSheet, row, col)),
       after: cloneCell(findCell(afterSheet, row, col)),
     }))
-    .filter(({ before, after }) => JSON.stringify(before) !== JSON.stringify(after))
+    .filter(
+      ({ before, after }) => JSON.stringify(before) !== JSON.stringify(after)
+    )
 
   if (cells.length === 0) {
     return null
@@ -691,7 +807,10 @@ const getSelectionTarget = (state: {
   return { mode: "cell", row: state.selectedRow, col: state.selectedCol }
 }
 
-const getLoadedCellsForTarget = (sheet: Sheet | null, target: SelectionTarget) => {
+const getLoadedCellsForTarget = (
+  sheet: Sheet | null,
+  target: SelectionTarget
+) => {
   if (!sheet) {
     return [] as Cell[]
   }
@@ -743,7 +862,9 @@ const sheetStyleFromSelection = (
   }
   if (mode === "column") {
     for (const currentRow of sheet.rows) {
-      const cell = currentRow.cells.find((currentCell) => currentCell.col === col)
+      const cell = currentRow.cells.find(
+        (currentCell) => currentCell.col === col
+      )
       if (cell?.style) {
         return cell.style
       }
@@ -751,7 +872,9 @@ const sheetStyleFromSelection = (
     return {}
   }
   if (mode === "row") {
-    const selectedRow = sheet.rows.find((currentRow) => currentRow.index === row)
+    const selectedRow = sheet.rows.find(
+      (currentRow) => currentRow.index === row
+    )
     for (const cell of selectedRow?.cells ?? []) {
       if (cell.style) {
         return cell.style
@@ -761,12 +884,17 @@ const sheetStyleFromSelection = (
   }
   if (hasMultiCellRange(range) && range) {
     for (const currentRow of sheet.rows) {
-      if (currentRow.index < range.rowStart || currentRow.index > range.rowEnd) {
+      if (
+        currentRow.index < range.rowStart ||
+        currentRow.index > range.rowEnd
+      ) {
         continue
       }
       const cell = currentRow.cells.find(
         (currentCell) =>
-          currentCell.col >= range.colStart && currentCell.col <= range.colEnd && currentCell.style
+          currentCell.col >= range.colStart &&
+          currentCell.col <= range.colEnd &&
+          currentCell.style
       )
       if (cell?.style) {
         return cell.style
@@ -806,16 +934,25 @@ const parseWindowKey = (key: string) => {
   }
 }
 
-const normalizeWindow = (sheet: Sheet | null, window: ViewportWindow): ViewportWindow => {
+const normalizeWindow = (
+  sheet: Sheet | null,
+  window: ViewportWindow
+): ViewportWindow => {
   const rowStart = Math.max(1, window.rowStart)
   const colStart = Math.max(1, window.colStart)
   const maxRow = sheet?.maxRow ?? rowStart
   const maxCol = sheet?.maxCol ?? colStart
   return {
     rowStart,
-    rowCount: Math.max(1, Math.min(window.rowCount, Math.max(1, maxRow - rowStart + 1))),
+    rowCount: Math.max(
+      1,
+      Math.min(window.rowCount, Math.max(1, maxRow - rowStart + 1))
+    ),
     colStart,
-    colCount: Math.max(1, Math.min(window.colCount, Math.max(1, maxCol - colStart + 1))),
+    colCount: Math.max(
+      1,
+      Math.min(window.colCount, Math.max(1, maxCol - colStart + 1))
+    ),
     force: window.force,
   }
 }
@@ -1003,14 +1140,19 @@ const pruneLoadedWindows = (
 ) =>
   loadedWindows.filter((key) => {
     const parsed = parseWindowKey(key)
-    return parsed?.sheetName === sheetName && windowsOverlap(parsed.window, keepWindow)
+    return (
+      parsed?.sheetName === sheetName &&
+      windowsOverlap(parsed.window, keepWindow)
+    )
   })
 
-export const useSheetStore = create<SheetState & {
-  loadedWindows: string[]
-  loadingWindows: string[]
-  viewportWindow: ViewportWindow
-}>((set, get) => ({
+export const useSheetStore = create<
+  SheetState & {
+    loadedWindows: string[]
+    loadingWindows: string[]
+    viewportWindow: ViewportWindow
+  }
+>((set, get) => ({
   workbook: null,
   sheet: null,
   files: [],
@@ -1185,7 +1327,11 @@ export const useSheetStore = create<SheetState & {
 
     set({ isLoading: true, error: null })
     try {
-      const payload = await fetchSheet(state.workbook.id, sheetName, DEFAULT_WINDOW)
+      const payload = await fetchSheet(
+        state.workbook.id,
+        sheetName,
+        DEFAULT_WINDOW
+      )
       set({
         workbook: payload.workbook,
         sheet: payload.sheet,
@@ -1228,7 +1374,9 @@ export const useSheetStore = create<SheetState & {
       return
     }
 
-    const existingNames = new Set(state.workbook.sheets.map((sheet) => sheet.name))
+    const existingNames = new Set(
+      state.workbook.sheets.map((sheet) => sheet.name)
+    )
     let counter = 1
     let nextName = `Sheet${counter}`
     while (existingNames.has(nextName)) {
@@ -1237,7 +1385,9 @@ export const useSheetStore = create<SheetState & {
     }
 
     try {
-      const payload = await createSheetRequest(state.workbook.id, { name: nextName })
+      const payload = await createSheetRequest(state.workbook.id, {
+        name: nextName,
+      })
       set({
         workbook: payload.workbook,
         sheet: payload.sheet,
@@ -1261,7 +1411,10 @@ export const useSheetStore = create<SheetState & {
       setLastOpenedSheetForFile(payload.workbook.id, payload.sheet.name)
       await get().refreshFiles()
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to create sheet" })
+      set({
+        error:
+          error instanceof Error ? error.message : "Failed to create sheet",
+      })
     }
   },
 
@@ -1284,7 +1437,9 @@ export const useSheetStore = create<SheetState & {
       })
       await get().refreshFiles()
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to add rows" })
+      set({
+        error: error instanceof Error ? error.message : "Failed to add rows",
+      })
     }
   },
 
@@ -1307,7 +1462,9 @@ export const useSheetStore = create<SheetState & {
       })
       await get().refreshFiles()
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to add columns" })
+      set({
+        error: error instanceof Error ? error.message : "Failed to add columns",
+      })
     }
   },
 
@@ -1319,11 +1476,20 @@ export const useSheetStore = create<SheetState & {
 
     let start = explicitStart ?? state.selectedRow
     let count = explicitCount ?? 1
-    if (explicitStart === undefined && explicitCount === undefined && state.selectionMode === "cell" && state.selectedRange) {
+    if (
+      explicitStart === undefined &&
+      explicitCount === undefined &&
+      state.selectionMode === "cell" &&
+      state.selectedRange
+    ) {
       start = state.selectedRange.rowStart
       count = state.selectedRange.rowEnd - state.selectedRange.rowStart + 1
     }
-    if (explicitStart === undefined && explicitCount === undefined && state.selectionMode === "sheet") {
+    if (
+      explicitStart === undefined &&
+      explicitCount === undefined &&
+      state.selectionMode === "sheet"
+    ) {
       start = 1
       count = 1
     }
@@ -1348,7 +1514,9 @@ export const useSheetStore = create<SheetState & {
       })
       await get().refreshFiles()
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to insert rows" })
+      set({
+        error: error instanceof Error ? error.message : "Failed to insert rows",
+      })
     }
   },
 
@@ -1360,7 +1528,11 @@ export const useSheetStore = create<SheetState & {
 
     let start = explicitStart ?? state.selectedCol
     let count = explicitCount ?? 1
-    if (explicitStart === undefined && explicitCount === undefined && state.selectionMode === "column") {
+    if (
+      explicitStart === undefined &&
+      explicitCount === undefined &&
+      state.selectionMode === "column"
+    ) {
       start = state.selectedCol
       count = 1
     } else if (
@@ -1371,7 +1543,11 @@ export const useSheetStore = create<SheetState & {
     ) {
       start = state.selectedRange.colStart
       count = state.selectedRange.colEnd - state.selectedRange.colStart + 1
-    } else if (explicitStart === undefined && explicitCount === undefined && state.selectionMode === "sheet") {
+    } else if (
+      explicitStart === undefined &&
+      explicitCount === undefined &&
+      state.selectionMode === "sheet"
+    ) {
       start = 1
       count = 1
     }
@@ -1396,7 +1572,10 @@ export const useSheetStore = create<SheetState & {
       })
       await get().refreshFiles()
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to insert columns" })
+      set({
+        error:
+          error instanceof Error ? error.message : "Failed to insert columns",
+      })
     }
   },
 
@@ -1408,11 +1587,20 @@ export const useSheetStore = create<SheetState & {
 
     let start = explicitStart ?? state.selectedRow
     let count = explicitCount ?? 1
-    if (explicitStart === undefined && explicitCount === undefined && state.selectionMode === "cell" && state.selectedRange) {
+    if (
+      explicitStart === undefined &&
+      explicitCount === undefined &&
+      state.selectionMode === "cell" &&
+      state.selectedRange
+    ) {
       start = state.selectedRange.rowStart
       count = state.selectedRange.rowEnd - state.selectedRange.rowStart + 1
     }
-    if (explicitStart === undefined && explicitCount === undefined && state.selectionMode === "sheet") {
+    if (
+      explicitStart === undefined &&
+      explicitCount === undefined &&
+      state.selectionMode === "sheet"
+    ) {
       start = 1
       count = state.sheet.maxRow
     }
@@ -1437,7 +1625,9 @@ export const useSheetStore = create<SheetState & {
       })
       await get().refreshFiles()
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to delete rows" })
+      set({
+        error: error instanceof Error ? error.message : "Failed to delete rows",
+      })
     }
   },
 
@@ -1449,7 +1639,11 @@ export const useSheetStore = create<SheetState & {
 
     let start = explicitStart ?? state.selectedCol
     let count = explicitCount ?? 1
-    if (explicitStart === undefined && explicitCount === undefined && state.selectionMode === "column") {
+    if (
+      explicitStart === undefined &&
+      explicitCount === undefined &&
+      state.selectionMode === "column"
+    ) {
       start = state.selectedCol
       count = 1
     } else if (
@@ -1460,7 +1654,11 @@ export const useSheetStore = create<SheetState & {
     ) {
       start = state.selectedRange.colStart
       count = state.selectedRange.colEnd - state.selectedRange.colStart + 1
-    } else if (explicitStart === undefined && explicitCount === undefined && state.selectionMode === "sheet") {
+    } else if (
+      explicitStart === undefined &&
+      explicitCount === undefined &&
+      state.selectionMode === "sheet"
+    ) {
       start = 1
       count = state.sheet.maxCol
     }
@@ -1485,7 +1683,10 @@ export const useSheetStore = create<SheetState & {
       })
       await get().refreshFiles()
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to delete columns" })
+      set({
+        error:
+          error instanceof Error ? error.message : "Failed to delete columns",
+      })
     }
   },
 
@@ -1510,7 +1711,9 @@ export const useSheetStore = create<SheetState & {
         sheet: payload.sheet,
         selectedSheetName: payload.sheet.name,
         activeWorkspaceTab:
-          state.activeWorkspaceTab === oldName ? payload.sheet.name : state.activeWorkspaceTab,
+          state.activeWorkspaceTab === oldName
+            ? payload.sheet.name
+            : state.activeWorkspaceTab,
         loadedWindows: [windowKey(payload.sheet.name, DEFAULT_WINDOW)],
         loadingWindows: [],
         viewportWindow: DEFAULT_WINDOW,
@@ -1525,7 +1728,10 @@ export const useSheetStore = create<SheetState & {
       setLastOpenedSheetForFile(payload.workbook.id, payload.sheet.name)
       await get().refreshFiles()
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to rename sheet" })
+      set({
+        error:
+          error instanceof Error ? error.message : "Failed to rename sheet",
+      })
     }
   },
 
@@ -1536,7 +1742,9 @@ export const useSheetStore = create<SheetState & {
     }
 
     try {
-      const payload = await deleteSheetRequest(state.workbook.id, { name: sheetName })
+      const payload = await deleteSheetRequest(state.workbook.id, {
+        name: sheetName,
+      })
       set({
         workbook: payload.workbook,
         sheet: payload.sheet,
@@ -1560,7 +1768,10 @@ export const useSheetStore = create<SheetState & {
       setLastOpenedSheetForFile(payload.workbook.id, payload.sheet.name)
       await get().refreshFiles()
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to delete sheet" })
+      set({
+        error:
+          error instanceof Error ? error.message : "Failed to delete sheet",
+      })
     }
   },
 
@@ -1569,13 +1780,21 @@ export const useSheetStore = create<SheetState & {
     const workbookId = state.workbook?.id
     const activeSheet = state.sheet
     const targetSheet = sheetName ?? activeSheet?.name
-    if (!workbookId || !targetSheet || !activeSheet || activeSheet.name !== targetSheet) {
+    if (
+      !workbookId ||
+      !targetSheet ||
+      !activeSheet ||
+      activeSheet.name !== targetSheet
+    ) {
       return
     }
 
     const window = normalizeWindow(activeSheet, { ...requestedWindow, force })
     const key = windowKey(targetSheet, window)
-    if ((!force && state.loadedWindows.includes(key)) || state.loadingWindows.includes(key)) {
+    if (
+      (!force && state.loadedWindows.includes(key)) ||
+      state.loadingWindows.includes(key)
+    ) {
       return
     }
 
@@ -1601,7 +1820,11 @@ export const useSheetStore = create<SheetState & {
         sheet: trimSheetToWindow(mergedSheet, keepWindow),
         loadedWindows: Array.from(
           new Set([
-            ...pruneLoadedWindows(latest.loadedWindows, payload.sheet.name, keepWindow),
+            ...pruneLoadedWindows(
+              latest.loadedWindows,
+              payload.sheet.name,
+              keepWindow
+            ),
             key,
           ])
         ),
@@ -1610,7 +1833,10 @@ export const useSheetStore = create<SheetState & {
     } catch (error) {
       set({
         loadingWindows: get().loadingWindows.filter((item) => item !== key),
-        error: error instanceof Error ? error.message : "Failed to load sheet window",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to load sheet window",
       })
     }
   },
@@ -1645,7 +1871,9 @@ export const useSheetStore = create<SheetState & {
 
     set({
       sheet: optimistic,
-      historyPast: historyEntry ? [...state.historyPast, historyEntry] : state.historyPast,
+      historyPast: historyEntry
+        ? [...state.historyPast, historyEntry]
+        : state.historyPast,
       historyFuture: [],
       selectedCell:
         state.selectedCell.address === toAddress(row, col)
@@ -1671,8 +1899,14 @@ export const useSheetStore = create<SheetState & {
     let attemptError: unknown = null
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        const payload = await updateCellRequest(state.workbook.id, requestPayload)
-        set({ workbook: payload.workbook, sheet: mergeSheetWindow(get().sheet, payload.sheet) })
+        const payload = await updateCellRequest(
+          state.workbook.id,
+          requestPayload
+        )
+        set({
+          workbook: payload.workbook,
+          sheet: mergeSheetWindow(get().sheet, payload.sheet),
+        })
         scheduleRefreshFiles(() => get().refreshFiles())
         return
       } catch (error) {
@@ -1691,7 +1925,11 @@ export const useSheetStore = create<SheetState & {
         colStart: col,
         colCount: 1,
       })
-      const persistedValue = readValueFromWindowPayload(verificationPayload, row, col)
+      const persistedValue = readValueFromWindowPayload(
+        verificationPayload,
+        row,
+        col
+      )
       if (persistedValue === value) {
         set({
           workbook: verificationPayload.workbook,
@@ -1781,7 +2019,11 @@ export const useSheetStore = create<SheetState & {
       return
     }
 
-    const optimistic = restoreHistoryCellsLocal(state.sheet, entry.cells, "before")
+    const optimistic = restoreHistoryCellsLocal(
+      state.sheet,
+      entry.cells,
+      "before"
+    )
 
     set({
       sheet: optimistic,
@@ -1813,7 +2055,10 @@ export const useSheetStore = create<SheetState & {
         force: true,
       })
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to persist undo" })
+      set({
+        error:
+          error instanceof Error ? error.message : "Failed to persist undo",
+      })
     }
   },
 
@@ -1824,7 +2069,11 @@ export const useSheetStore = create<SheetState & {
       return
     }
 
-    const optimistic = restoreHistoryCellsLocal(state.sheet, entry.cells, "after")
+    const optimistic = restoreHistoryCellsLocal(
+      state.sheet,
+      entry.cells,
+      "after"
+    )
 
     set({
       sheet: optimistic,
@@ -1856,7 +2105,10 @@ export const useSheetStore = create<SheetState & {
         force: true,
       })
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to persist redo" })
+      set({
+        error:
+          error instanceof Error ? error.message : "Failed to persist redo",
+      })
     }
   },
 
@@ -1869,7 +2121,8 @@ export const useSheetStore = create<SheetState & {
     const target = getSelectionTarget(state)
     const createMissing =
       target.mode === "cell" ||
-      (target.mode === "range" && selectionArea(target) <= MAX_HISTORY_RANGE_AREA)
+      (target.mode === "range" &&
+        selectionArea(target) <= MAX_HISTORY_RANGE_AREA)
     const optimistic = patchLoadedCells(
       state.sheet,
       target,
@@ -1879,13 +2132,20 @@ export const useSheetStore = create<SheetState & {
       }),
       createMissing
     )
-    const historyEntry = buildHistoryEntry(state.sheet.name, state.sheet, optimistic, target)
+    const historyEntry = buildHistoryEntry(
+      state.sheet.name,
+      state.sheet,
+      optimistic,
+      target
+    )
 
     set({
       sheet: optimistic,
       selectedStyle: { ...(state.selectedStyle ?? {}), ...patch },
       error: null,
-      historyPast: historyEntry ? [...state.historyPast, historyEntry] : state.historyPast,
+      historyPast: historyEntry
+        ? [...state.historyPast, historyEntry]
+        : state.historyPast,
       historyFuture: [],
     })
 
@@ -1902,7 +2162,12 @@ export const useSheetStore = create<SheetState & {
       })
       await get().refreshFiles()
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to persist style changes" })
+      set({
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to persist style changes",
+      })
     }
   },
 
@@ -1913,14 +2178,24 @@ export const useSheetStore = create<SheetState & {
     }
 
     const target = getSelectionTarget(state)
-    const optimistic = patchLoadedCells(state.sheet, target, (cell) => ({ ...cell, style: {} }))
-    const historyEntry = buildHistoryEntry(state.sheet.name, state.sheet, optimistic, target)
+    const optimistic = patchLoadedCells(state.sheet, target, (cell) => ({
+      ...cell,
+      style: {},
+    }))
+    const historyEntry = buildHistoryEntry(
+      state.sheet.name,
+      state.sheet,
+      optimistic,
+      target
+    )
 
     set({
       sheet: optimistic,
       selectedStyle: {},
       error: null,
-      historyPast: historyEntry ? [...state.historyPast, historyEntry] : state.historyPast,
+      historyPast: historyEntry
+        ? [...state.historyPast, historyEntry]
+        : state.historyPast,
       historyFuture: [],
     })
 
@@ -1936,7 +2211,10 @@ export const useSheetStore = create<SheetState & {
       })
       await get().refreshFiles()
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to clear formatting" })
+      set({
+        error:
+          error instanceof Error ? error.message : "Failed to clear formatting",
+      })
     }
   },
 
@@ -1988,7 +2266,10 @@ export const useSheetStore = create<SheetState & {
       })
       await get().refreshFiles()
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to clear values" })
+      set({
+        error:
+          error instanceof Error ? error.message : "Failed to clear values",
+      })
     } finally {
       clearValuesInFlight = false
     }
@@ -2056,7 +2337,9 @@ export const useSheetStore = create<SheetState & {
         set({ workbook: { ...current, fileName: name } })
       }
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to rename file" })
+      set({
+        error: error instanceof Error ? error.message : "Failed to rename file",
+      })
     }
   },
 
@@ -2068,13 +2351,19 @@ export const useSheetStore = create<SheetState & {
       set({
         workbook: clearCurrentWorkbook ? null : current,
         sheet: clearCurrentWorkbook ? null : get().sheet,
-        activeWorkspaceTab: clearCurrentWorkbook ? "" : get().activeWorkspaceTab,
-        fileSettings: clearCurrentWorkbook ? DEFAULT_FILE_SETTINGS : get().fileSettings,
+        activeWorkspaceTab: clearCurrentWorkbook
+          ? ""
+          : get().activeWorkspaceTab,
+        fileSettings: clearCurrentWorkbook
+          ? DEFAULT_FILE_SETTINGS
+          : get().fileSettings,
         kanbanRegions: clearCurrentWorkbook ? [] : get().kanbanRegions,
       })
       await Promise.all([get().refreshFiles(), get().refreshRecentFiles()])
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to delete file" })
+      set({
+        error: error instanceof Error ? error.message : "Failed to delete file",
+      })
     }
   },
 
@@ -2116,7 +2405,9 @@ export const useSheetStore = create<SheetState & {
     const now = new Date().toISOString()
     const next: KanbanRegion = {
       id: `kanban_${Math.random().toString(36).slice(2, 10)}`,
-      name: name?.trim() || `Kanban ${state.kanbanRegions.filter((r) => r.sheetName === state.sheet?.name).length + 1}`,
+      name:
+        name?.trim() ||
+        `Kanban ${state.kanbanRegions.filter((r) => r.sheetName === state.sheet?.name).length + 1}`,
       sheetName: state.sheet.name,
       range: {
         rowStart: range.rowStart,
@@ -2138,9 +2429,16 @@ export const useSheetStore = create<SheetState & {
     }
     const regions = [...state.kanbanRegions, next]
     const previousRegions = state.kanbanRegions
-    set({ kanbanRegions: regions, activeWorkspaceTab: `kanban:${next.id}`, error: null })
+    set({
+      kanbanRegions: regions,
+      activeWorkspaceTab: `kanban:${next.id}`,
+      error: null,
+    })
     try {
-      const savedRegions = await persistKanbanRegions(state.workbook.id, regions)
+      const savedRegions = await persistKanbanRegions(
+        state.workbook.id,
+        regions
+      )
       set({ kanbanRegions: savedRegions })
       return savedRegions.find((region) => region.id === next.id) ?? next
     } catch (error) {
@@ -2185,8 +2483,10 @@ export const useSheetStore = create<SheetState & {
         ...region,
         range: {
           ...region.range,
-          rowEnd: axis === "rows" ? region.range.rowEnd + step : region.range.rowEnd,
-          colEnd: axis === "cols" ? region.range.colEnd + step : region.range.colEnd,
+          rowEnd:
+            axis === "rows" ? region.range.rowEnd + step : region.range.rowEnd,
+          colEnd:
+            axis === "cols" ? region.range.colEnd + step : region.range.colEnd,
         },
       }
     })
@@ -2221,7 +2521,10 @@ export const useSheetStore = create<SheetState & {
     )
     set({ kanbanRegions: regions, error: null })
     try {
-      const savedRegions = await persistKanbanRegions(state.workbook.id, regions)
+      const savedRegions = await persistKanbanRegions(
+        state.workbook.id,
+        regions
+      )
       set({ kanbanRegions: savedRegions })
     } catch (error) {
       set({
@@ -2248,7 +2551,10 @@ export const useSheetStore = create<SheetState & {
     })
     set({ kanbanRegions: regions, error: null })
     try {
-      const savedRegions = await persistKanbanRegions(state.workbook.id, regions)
+      const savedRegions = await persistKanbanRegions(
+        state.workbook.id,
+        regions
+      )
       set({ kanbanRegions: savedRegions })
     } catch (error) {
       set({
@@ -2285,7 +2591,10 @@ export const useSheetStore = create<SheetState & {
     })
     set({ kanbanRegions: regions, error: null })
     try {
-      const savedRegions = await persistKanbanRegions(state.workbook.id, regions)
+      const savedRegions = await persistKanbanRegions(
+        state.workbook.id,
+        regions
+      )
       set({ kanbanRegions: savedRegions })
     } catch (error) {
       set({
@@ -2314,7 +2623,8 @@ export const useSheetStore = create<SheetState & {
           ? patch.cardColorByCol
           : region.cardColorByCol
       const nextColorByCol =
-        requestedCol >= region.range.colStart && requestedCol <= region.range.colEnd
+        requestedCol >= region.range.colStart &&
+        requestedCol <= region.range.colEnd
           ? requestedCol
           : region.cardColorByCol
       const nextColorMap =
@@ -2330,7 +2640,10 @@ export const useSheetStore = create<SheetState & {
     })
     set({ kanbanRegions: regions, error: null })
     try {
-      const savedRegions = await persistKanbanRegions(state.workbook.id, regions)
+      const savedRegions = await persistKanbanRegions(
+        state.workbook.id,
+        regions
+      )
       set({ kanbanRegions: savedRegions })
     } catch (error) {
       set({
@@ -2338,6 +2651,95 @@ export const useSheetStore = create<SheetState & {
         error:
           error instanceof Error ? error.message : "Failed to save kanban view",
       })
+    }
+  },
+
+  createKanbanCard: async (regionId, options) => {
+    const state = get()
+    if (!state.workbook || !state.sheet) {
+      return null
+    }
+
+    const region = state.kanbanRegions.find(
+      (item) => item.id === regionId && item.sheetName === state.sheet?.name
+    )
+    if (!region) {
+      return null
+    }
+
+    const row = region.range.rowEnd + 1
+    const normalizedStatus =
+      options?.status?.trim() && options.status !== "No status"
+        ? options.status.trim()
+        : ""
+    const normalizedTitle = options?.title?.trim() || "New card"
+
+    set({ error: null })
+
+    try {
+      const payload = await insertRowsRequest(
+        state.workbook.id,
+        { sheet: state.sheet.name, start: row, count: 1 },
+        state.viewportWindow
+      )
+
+      const nextRegions = insertKanbanRowsLocally(state.kanbanRegions, {
+        sheetName: state.sheet.name,
+        regionId,
+        startRow: row,
+        count: 1,
+        statusToAdd: normalizedStatus || undefined,
+      })
+
+      set({
+        workbook: payload.workbook,
+        sheet: payload.sheet,
+        kanbanRegions: nextRegions,
+        selectionMode: "cell",
+        selectedRange: null,
+        selectedRow: row,
+        selectedCol: region.titleCol,
+        selectedCell: EMPTY_CELL,
+        selectedStyle: {},
+        error: null,
+      })
+
+      try {
+        const savedRegions = await persistKanbanRegions(
+          state.workbook.id,
+          nextRegions
+        )
+        set({ kanbanRegions: savedRegions })
+      } catch (error) {
+        set({
+          error:
+            error instanceof Error
+              ? `${error.message}. Card was created, but kanban layout changes may not persist yet.`
+              : "Card was created, but kanban layout changes may not persist yet.",
+        })
+      }
+
+      const initialValues = new Map<number, string>([
+        [region.titleCol, normalizedTitle],
+      ])
+      if (normalizedStatus) {
+        initialValues.set(region.statusCol, normalizedStatus)
+      }
+
+      for (const [col, value] of initialValues) {
+        await get().updateCell(row, col, value)
+      }
+
+      await get().refreshFiles()
+      return row
+    } catch (error) {
+      set({
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to create kanban card",
+      })
+      return null
     }
   },
 
@@ -2360,7 +2762,9 @@ export const useSheetStore = create<SheetState & {
     if (!allRows.includes(sourceRow)) {
       return
     }
-    const sourceStatus = readCellValue(state.sheet, sourceRow, region.statusCol).trim() || "No status"
+    const sourceStatus =
+      readCellValue(state.sheet, sourceRow, region.statusCol).trim() ||
+      "No status"
     const normalizedTargetStatus = targetStatus.trim() || "No status"
 
     const order = [
@@ -2368,7 +2772,11 @@ export const useSheetStore = create<SheetState & {
       ...Array.from(
         new Set(
           allRows
-            .map((row) => readCellValue(state.sheet, row, region.statusCol).trim() || "No status")
+            .map(
+              (row) =>
+                readCellValue(state.sheet, row, region.statusCol).trim() ||
+                "No status"
+            )
             .filter((status) => !region.statusOrder.includes(status))
         )
       ),
@@ -2379,7 +2787,8 @@ export const useSheetStore = create<SheetState & {
       groups.set(status, [])
     }
     for (const row of allRows) {
-      const status = readCellValue(state.sheet, row, region.statusCol).trim() || "No status"
+      const status =
+        readCellValue(state.sheet, row, region.statusCol).trim() || "No status"
       if (!groups.has(status)) {
         groups.set(status, [])
       }
@@ -2394,7 +2803,10 @@ export const useSheetStore = create<SheetState & {
     sourceGroup.splice(sourceAt, 1)
 
     const targetGroup = groups.get(normalizedTargetStatus) ?? []
-    const nextTargetIndex = Math.max(0, Math.min(targetIndex, targetGroup.length))
+    const nextTargetIndex = Math.max(
+      0,
+      Math.min(targetIndex, targetGroup.length)
+    )
     targetGroup.splice(nextTargetIndex, 0, sourceRow)
     groups.set(normalizedTargetStatus, targetGroup)
 
@@ -2407,14 +2819,19 @@ export const useSheetStore = create<SheetState & {
     const rowSnapshots = new Map<number, Record<number, string>>()
     for (const row of allRows) {
       const snapshot: Record<number, string> = {}
-      for (let col = region.range.colStart; col <= region.range.colEnd; col += 1) {
+      for (
+        let col = region.range.colStart;
+        col <= region.range.colEnd;
+        col += 1
+      ) {
         snapshot[col] = readCellValue(state.sheet, row, col)
       }
       rowSnapshots.set(row, snapshot)
     }
     const movedSnapshot = rowSnapshots.get(sourceRow)
     if (movedSnapshot) {
-      movedSnapshot[region.statusCol] = normalizedTargetStatus === "No status" ? "" : normalizedTargetStatus
+      movedSnapshot[region.statusCol] =
+        normalizedTargetStatus === "No status" ? "" : normalizedTargetStatus
       rowSnapshots.set(sourceRow, movedSnapshot)
     }
 
@@ -2425,7 +2842,11 @@ export const useSheetStore = create<SheetState & {
       if (!sourceValues) {
         continue
       }
-      for (let col = region.range.colStart; col <= region.range.colEnd; col += 1) {
+      for (
+        let col = region.range.colStart;
+        col <= region.range.colEnd;
+        col += 1
+      ) {
         await get().updateCell(destRow, col, sourceValues[col] ?? "")
       }
     }
@@ -2445,7 +2866,10 @@ export const useSheetStore = create<SheetState & {
     )
     set({ kanbanRegions: regions, error: null })
     try {
-      const savedRegions = await persistKanbanRegions(state.workbook.id, regions)
+      const savedRegions = await persistKanbanRegions(
+        state.workbook.id,
+        regions
+      )
       set({ kanbanRegions: savedRegions })
     } catch (error) {
       set({
@@ -2474,7 +2898,10 @@ export const useSheetStore = create<SheetState & {
     } catch (error) {
       set({
         fileSettings: current,
-        error: error instanceof Error ? error.message : "Failed to update file settings",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to update file settings",
       })
     }
   },
@@ -2493,7 +2920,10 @@ export const useSheetStore = create<SheetState & {
     } catch (error) {
       set({
         fileSettings: current,
-        error: error instanceof Error ? error.message : "Failed to update email settings",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to update email settings",
       })
     }
   },
