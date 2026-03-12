@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import {
-  Editor,
   RevoGrid,
   TextEditor,
   defineCustomElements,
@@ -10,8 +9,6 @@ import {
   type ColumnDataSchemaModel,
   type ColumnRegular,
   type EditorCtr,
-  type EditorCtrCallable,
-  type EditorType,
   type Editors,
   type FocusAfterRenderEvent,
   type InitialHeaderClick,
@@ -42,13 +39,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 defineCustomElements()
 
@@ -163,7 +153,6 @@ const FETCH_COL_BLOCK = 32
 const CELL_UPDATE_BATCH_CONCURRENCY = 12
 const MIN_GRID_ROWS = 1000
 const DEFAULT_KANBAN_STATUS = "Unassigned"
-const CUSTOM_KANBAN_STATUS_OPTION = "__planar_custom_status__"
 
 const toColumnLabel = (index: number) => {
   let label = ""
@@ -818,36 +807,6 @@ const normalizeKanbanStatusValue = (value: string) => {
   return trimmed || DEFAULT_KANBAN_STATUS
 }
 
-const collectKanbanStatusOptions = (
-  preparedGridData: PreparedGridData | null,
-  regions: KanbanRegion[]
-) => {
-  const values = new Set<string>([DEFAULT_KANBAN_STATUS])
-
-  for (const region of regions) {
-    for (const status of region.statusOrder ?? []) {
-      const trimmed = status.trim()
-      if (trimmed) {
-        values.add(trimmed)
-      }
-    }
-    if (!preparedGridData) {
-      continue
-    }
-    for (
-      let row = region.range.rowStart + 1;
-      row <= region.range.rowEnd;
-      row += 1
-    ) {
-      const raw =
-        preparedGridData.cellMatrix.get(row)?.get(region.statusCol)?.value ?? ""
-      values.add(normalizeKanbanStatusValue(raw))
-    }
-  }
-
-  return Array.from(values)
-}
-
 const EMAIL_PATTERN = /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i
 
 const findFirstEmailInRow = (
@@ -1396,157 +1355,7 @@ export function Grid() {
   }, [clearSelectedValues, commitGridCellValue, getSelectionBounds])
 
   const statusCellEditor = useMemo(() => {
-    const KanbanStatusEditor = ({
-      column,
-      rowIndex,
-      val,
-      save,
-      close,
-    }: EditorType) => {
-      const col = parseColNumber(column.prop)
-      const row = typeof rowIndex === "number" ? rowIndex + 1 : null
-      const initialValue = normalizeKanbanStatusValue(
-        val === undefined || val === null ? "" : String(val)
-      )
-      const [mode, setMode] = useState<"select" | "custom">("select")
-      const [selectOpen, setSelectOpen] = useState(true)
-      const [customValue, setCustomValue] = useState(initialValue)
-      const inputRef = useRef<HTMLInputElement | null>(null)
-      const customModePendingRef = useRef(false)
-      const options = useMemo(() => {
-        const regions =
-          row && col
-            ? getKanbanStatusRegionsForCell(
-                kanbanRegionsForSheetRef.current,
-                row,
-                col
-              )
-            : []
-        return collectKanbanStatusOptions(
-          preparedGridDataRef.current,
-          regions
-        ).sort((a, b) => {
-          if (a === DEFAULT_KANBAN_STATUS) {
-            return -1
-          }
-          if (b === DEFAULT_KANBAN_STATUS) {
-            return 1
-          }
-          return a.localeCompare(b)
-        })
-      }, [col, row])
-
-      useEffect(() => {
-        if (mode !== "custom") {
-          return
-        }
-        window.requestAnimationFrame(() => {
-          inputRef.current?.focus()
-          inputRef.current?.select()
-        })
-      }, [mode])
-
-      const submitCustomValue = () => {
-        save(normalizeKanbanStatusValue(customValue), false)
-      }
-
-      return mode === "custom" ? (
-        <Input
-          ref={inputRef}
-          className="h-full rounded-none border-0 px-2 shadow-none focus-visible:ring-0"
-          value={customValue}
-          onChange={(event) => {
-            setCustomValue(event.target.value)
-          }}
-          onBlur={() => {
-            submitCustomValue()
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === "Tab") {
-              event.preventDefault()
-              submitCustomValue()
-              return
-            }
-            if (event.key === "Escape") {
-              event.preventDefault()
-              close(false)
-            }
-          }}
-        />
-      ) : (
-        <Select
-          open={selectOpen}
-          value={initialValue}
-          onValueChange={(value) => {
-            if (value === CUSTOM_KANBAN_STATUS_OPTION) {
-              customModePendingRef.current = true
-              setMode("custom")
-              setSelectOpen(false)
-              return
-            }
-            save(normalizeKanbanStatusValue(value), false)
-          }}
-          onOpenChange={(open) => {
-            setSelectOpen(open)
-            if (!open) {
-              if (customModePendingRef.current) {
-                customModePendingRef.current = false
-                return
-              }
-              close(false)
-            }
-          }}
-        >
-          <SelectTrigger
-            autoFocus
-            className="h-full w-full rounded-none border-0 px-2 shadow-none focus-visible:ring-0"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault()
-                close(false)
-              }
-            }}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent
-            align="start"
-            className="w-56"
-            onCloseAutoFocus={(event) => {
-              event.preventDefault()
-            }}
-          >
-            {options.map((option) => (
-              <SelectItem key={option} value={option}>
-                {option}
-              </SelectItem>
-            ))}
-            <SelectItem value={CUSTOM_KANBAN_STATUS_OPTION}>
-              Custom status...
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      )
-    }
-
-    const dropdownEditor = Editor(KanbanStatusEditor) as EditorCtrCallable
-    const editor: EditorCtr = (column, save, close) => {
-      const col = parseColNumber(column.prop)
-      const row =
-        typeof column.rowIndex === "number" ? column.rowIndex + 1 : null
-      if (
-        col &&
-        row &&
-        getKanbanStatusRegionsForCell(
-          kanbanRegionsForSheetRef.current,
-          row,
-          col
-        ).length > 0
-      ) {
-        return dropdownEditor(column, save, close)
-      }
-      return new TextEditor(column, save)
-    }
+    const editor: EditorCtr = (column, save) => new TextEditor(column, save)
     return editor
   }, [])
 
