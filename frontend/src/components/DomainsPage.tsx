@@ -74,7 +74,9 @@ export function DomainsPage() {
         const response = await listManagedDomains()
         setDomains(response.domains)
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to load domains")
+        toast.error(
+          error instanceof Error ? error.message : "Failed to load domains"
+        )
       } finally {
         setIsLoading(false)
       }
@@ -118,7 +120,9 @@ export function DomainsPage() {
       await refreshDomains()
       toast.success(`Caddy is now managing ${response.domain.domain}`)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Provisioning failed")
+      toast.error(
+        error instanceof Error ? error.message : "Provisioning failed"
+      )
     } finally {
       setIsProvisioning(false)
     }
@@ -128,9 +132,9 @@ export function DomainsPage() {
     <div className="min-h-0 flex-1 overflow-auto p-2">
       <div className="mx-auto flex max-w-5xl flex-col gap-4">
         <section className="overflow-hidden rounded-[28px] border border-border bg-card">
-          <div className="grid gap-6 border-b border-border bg-[linear-gradient(135deg,rgba(2,132,199,0.08),rgba(15,23,42,0.03))] px-5 py-6 md:grid-cols-[minmax(0,1.4fr)_minmax(320px,1fr)]">
+          <div className="domains-hero-surface grid gap-6 border-b border-border px-5 py-6 md:grid-cols-[minmax(0,1.4fr)_minmax(320px,1fr)]">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200/70 bg-white/80 px-3 py-1 text-[0.72rem] font-medium tracking-[0.18em] text-sky-800 uppercase">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[0.72rem] font-medium tracking-[0.18em] text-primary uppercase">
                 <ShieldCheckIcon className="size-3.5" />
                 Domain Routing
               </div>
@@ -140,12 +144,12 @@ export function DomainsPage() {
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                 The flow is gated on DNS. Planar checks the live A and AAAA
                 records first, and only after they point at this server does it
-                reload Caddy so the domain serves the app and Let&apos;s Encrypt can
-                issue a certificate.
+                reload Caddy so the domain serves the app and Let&apos;s Encrypt
+                can issue a certificate.
               </p>
             </div>
 
-            <div className="rounded-[24px] border border-border/80 bg-background/90 p-4 shadow-sm">
+            <div className="rounded-[24px] border border-border/80 bg-background/90 p-4 shadow-sm shadow-primary/10">
               <div className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">
                 Add Domain
               </div>
@@ -203,8 +207,8 @@ export function DomainsPage() {
                   <div
                     className={`rounded-full px-3 py-1 text-xs font-medium ${
                       check?.dnsConfigured
-                        ? "bg-emerald-100 text-emerald-800"
-                        : "bg-amber-100 text-amber-800"
+                        ? "bg-success-soft text-success-foreground"
+                        : "bg-warning-soft text-warning-foreground"
                     }`}
                   >
                     {check
@@ -277,11 +281,11 @@ export function DomainsPage() {
 
               <div className="mt-4 space-y-3">
                 {isLoading ? (
-                  <div className="rounded-xl border border-border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+                  <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
                     Loading domains...
                   </div>
                 ) : domains.length === 0 ? (
-                  <div className="rounded-xl border border-border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+                  <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
                     No managed domains yet
                   </div>
                 ) : (
@@ -291,7 +295,7 @@ export function DomainsPage() {
                       className="rounded-xl border border-border bg-card px-4 py-3"
                     >
                       <div className="flex items-center gap-2 text-sm font-medium">
-                        <GlobeIcon className="size-4 text-sky-700" />
+                        <GlobeIcon className="size-4 text-primary" />
                         {item.domain}
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">

@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom"
 
 import { cn } from "@/lib/utils"
 import { useSheetStore } from "@/store/sheetStore"
+import { FileSettingsButton } from "./FileSettingsButton"
 import { Button } from "./ui/button"
 import {
   Dialog,
@@ -157,65 +158,68 @@ export function SheetTabs({ className, compact = false }: SheetTabsProps) {
           void loadSheet(value)
         }}
       >
-        <div className="relative w-full min-w-0">
-          <div
-            ref={tabsScrollRef}
-            className="h-12 w-full min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-color:color-mix(in_oklab,var(--border)_75%,transparent)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/70 [&::-webkit-scrollbar-thumb:hover]:bg-border [&::-webkit-scrollbar-track]:bg-transparent"
-          >
-            <TabsList className="h-full! min-h-0 w-max min-w-full flex-nowrap items-end gap-1 bg-transparent p-0 pb-0">
-              {(workbook?.sheets ?? []).map((sheetMeta) => (
-                <div key={sheetMeta.name} className="flex items-end gap-1">
-                  <TabsTrigger
-                    className="h-full! rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/35 px-5 py-1 text-sm shadow-none! data-active:-mb-px data-active:bg-card"
-                    value={sheetMeta.name}
-                    onDoubleClick={() => openEditDialog(sheetMeta.name)}
+        <div className="flex w-full min-w-0 items-end gap-2">
+          <div className="relative min-w-0 flex-1">
+            <div
+              ref={tabsScrollRef}
+              className="h-12 w-full min-w-0 translate-x-6 overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-color:color-mix(in_oklab,var(--border)_75%,transparent)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/70 [&::-webkit-scrollbar-thumb:hover]:bg-border [&::-webkit-scrollbar-track]:bg-transparent"
+            >
+              <TabsList className="h-full! min-h-0 w-max min-w-full flex-nowrap items-end justify-start gap-1 bg-transparent p-0 pb-0">
+                {(workbook?.sheets ?? []).map((sheetMeta) => (
+                  <div key={sheetMeta.name} className="flex items-end gap-1">
+                    <TabsTrigger
+                      className="h-full! rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/35 px-5 py-1 text-sm shadow-none! data-active:-mb-px data-active:bg-card"
+                      value={sheetMeta.name}
+                      onDoubleClick={() => openEditDialog(sheetMeta.name)}
+                    >
+                      {sheetMeta.name}
+                    </TabsTrigger>
+                    {sheetMeta.name === selectedSheetName &&
+                    (kanbanBySheet.get(sheetMeta.name) ?? []).length > 0 ? (
+                      <div className="mx-1 flex items-end gap-1 border-r border-border/60 pr-2">
+                        <HugeiconsIcon
+                          size={16}
+                          className="text-foreground/25"
+                          icon={ArrowDataTransferHorizontalFreeIcons}
+                        />
+                        {(kanbanBySheet.get(sheetMeta.name) ?? []).map(
+                          (region) => (
+                            <TabsTrigger
+                              className="h-full! rounded-t-md rounded-b-none border border-b-0 border-border/70 bg-muted/20 px-3 py-1 text-xs text-muted-foreground shadow-none! data-active:-mb-px data-active:border-border data-active:bg-card data-active:text-foreground"
+                              key={`kanban:${region.id}`}
+                              value={`kanban:${region.id}`}
+                              title={`${sheetMeta.name} · ${region.name}`}
+                            >
+                              <KanbanSquareIcon className="size-3.5" />{" "}
+                              {region.name}
+                            </TabsTrigger>
+                          )
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                {workbook ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-2 rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/35 px-5 py-1 text-sm shadow-none! data-active:-mb-px data-active:bg-card"
+                    onClick={createSheet}
                   >
-                    {sheetMeta.name}
-                  </TabsTrigger>
-                  {sheetMeta.name === selectedSheetName &&
-                  (kanbanBySheet.get(sheetMeta.name) ?? []).length > 0 ? (
-                    <div className="mx-1 flex items-end gap-1 border-r border-border/60 pr-2">
-                      <HugeiconsIcon
-                        size={16}
-                        className="text-foreground/25"
-                        icon={ArrowDataTransferHorizontalFreeIcons}
-                      />
-                      {(kanbanBySheet.get(sheetMeta.name) ?? []).map(
-                        (region) => (
-                          <TabsTrigger
-                            className="h-full! rounded-t-md rounded-b-none border border-b-0 border-border/70 bg-muted/20 px-3 py-1 text-xs text-muted-foreground shadow-none! data-active:-mb-px data-active:border-border data-active:bg-card data-active:text-foreground"
-                            key={`kanban:${region.id}`}
-                            value={`kanban:${region.id}`}
-                            title={`${sheetMeta.name} · ${region.name}`}
-                          >
-                            <KanbanSquareIcon className="size-3.5" />{" "}
-                            {region.name}
-                          </TabsTrigger>
-                        )
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-              {workbook ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 gap-2 rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/35 px-5 py-1 text-sm shadow-none! data-active:-mb-px data-active:bg-card"
-                  onClick={createSheet}
-                >
-                  <PlusSquareIcon /> New Sheet
-                </Button>
-              ) : null}
-            </TabsList>
+                    <PlusSquareIcon /> New Sheet
+                  </Button>
+                ) : null}
+              </TabsList>
+            </div>
+            {showFadeStart ? (
+              <div className="pointer-events-none absolute top-0 bottom-0 left-0 w-8 bg-gradient-to-r from-background to-transparent" />
+            ) : null}
+            {showFadeEnd ? (
+              <div className="pointer-events-none absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent" />
+            ) : null}
           </div>
-          {showFadeStart ? (
-            <div className="pointer-events-none absolute top-0 bottom-0 left-0 w-8 bg-gradient-to-r from-background to-transparent" />
-          ) : null}
-          {showFadeEnd ? (
-            <div className="pointer-events-none absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent" />
-          ) : null}
+          <FileSettingsButton className="mb-px shrink-0 -translate-x-6" />
         </div>
       </Tabs>
 

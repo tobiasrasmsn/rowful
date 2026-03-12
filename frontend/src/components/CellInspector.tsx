@@ -6,8 +6,11 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from "react"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { Redo02Icon, Undo02Icon } from "@hugeicons/core-free-icons"
 
 import { useSheetStore } from "@/store/sheetStore"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
 const GRID_NAVIGATE_TO_CELL_EVENT = "planar:navigate-to-cell"
@@ -97,6 +100,10 @@ export function CellInspector() {
   const selectedRange = useSheetStore((state) => state.selectedRange)
   const selectionMode = useSheetStore((state) => state.selectionMode)
   const updateCell = useSheetStore((state) => state.updateCell)
+  const historyPast = useSheetStore((state) => state.historyPast)
+  const historyFuture = useSheetStore((state) => state.historyFuture)
+  const undo = useSheetStore((state) => state.undo)
+  const redo = useSheetStore((state) => state.redo)
   const isMultiCellSelection =
     selectionMode === "cell" &&
     selectedRange &&
@@ -239,7 +246,7 @@ export function CellInspector() {
   )
 
   return (
-    <div className="flex h-fit items-center border-b border-border bg-card">
+    <div className="flex h-10 items-center border-b border-border bg-card">
       <Input
         value={draftAddress}
         onChange={handleAddressChange}
@@ -254,8 +261,30 @@ export function CellInspector() {
           isSingleCellSelection ? (event) => setDraftValue(event.target.value) : undefined
         }
         onKeyDown={isSingleCellSelection ? handleInspectorKeyDown : undefined}
-        className="rounded-none border-y-0 border-r-0 border-l bg-transparent font-mono focus-visible:ring-0 focus-visible:outline-0"
+        className="min-w-0 flex-1 rounded-none border-y-0 border-r-0 border-l bg-transparent font-mono focus-visible:ring-0 focus-visible:outline-0"
       />
+      <div className="flex items-center gap-1 border-l border-border px-2">
+        <Button
+          size="icon-sm"
+          variant="outline"
+          onClick={() => void undo()}
+          disabled={historyPast.length === 0}
+          title="Undo"
+          aria-label="Undo"
+        >
+          <HugeiconsIcon icon={Undo02Icon} className="size-4" />
+        </Button>
+        <Button
+          size="icon-sm"
+          variant="outline"
+          onClick={() => void redo()}
+          disabled={historyFuture.length === 0}
+          title="Redo"
+          aria-label="Redo"
+        >
+          <HugeiconsIcon icon={Redo02Icon} className="size-4" />
+        </Button>
+      </div>
     </div>
   )
 }

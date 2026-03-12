@@ -16,7 +16,6 @@ import { CellInspector } from "@/components/CellInspector"
 import { DomainsPage } from "@/components/DomainsPage"
 import { FileTabsBar } from "@/components/FileTabsBar"
 import { FilesBrowser } from "@/components/FilesBrowser"
-import { FormatBar } from "@/components/FormatBar"
 import { Grid } from "@/components/Grid"
 import { KanbanView } from "@/components/KanbanView"
 import { LoginPage } from "@/components/LoginPage"
@@ -29,8 +28,8 @@ import { useSheetStore } from "@/store/sheetStore"
 
 function LoadingScreen() {
   return (
-    <div className="flex min-h-svh items-center justify-center bg-[linear-gradient(180deg,#f8fafc,#e2e8f0)]">
-      <div className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-600 shadow-sm">
+    <div className="loading-screen-surface flex min-h-svh items-center justify-center">
+      <div className="rounded-full border border-border bg-card px-4 py-2 text-sm text-muted-foreground shadow-md shadow-primary/10">
         Loading Planar...
       </div>
     </div>
@@ -65,21 +64,18 @@ function SheetWorkspace() {
 
   return (
     <>
-      <div className="flex min-w-0 items-end gap-8 px-2">
-        <FileTabsBar compact className="shrink-0" showLoadingStrip={false} />
-        <div className="max-w-[calc(100vw-20%)] min-w-0">
+      <div className="flex min-w-0 flex-col gap-1 px-2">
+        <div className="flex min-w-0 items-center gap-4">
+          <FileTabsBar compact className="min-w-0 flex-1" showLoadingStrip={false} />
+          <UserActionsPopover className="shrink-0" />
+        </div>
+        <div className="flex min-w-0 items-end">
           <SheetTabs compact className="min-w-0 flex-1" />
         </div>
-        <UserActionsPopover className="ml-auto shrink-0" />
       </div>
       <div className="min-h-0 flex-1 p-2 pt-0">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card">
-          {activeKanban ? null : (
-            <>
-              <FormatBar />
-              <CellInspector />
-            </>
-          )}
+          {activeKanban ? null : <CellInspector />}
 
           <div className="min-h-0 flex-1">
             {activeKanban ? <KanbanView region={activeKanban} /> : <Grid />}
@@ -194,7 +190,8 @@ function SheetRoutePage() {
       : ""
     const activeRegion = activeKanbanId
       ? kanbanRegions.find(
-          (region) => region.id === activeKanbanId && region.sheetName === sheetName
+          (region) =>
+            region.id === activeKanbanId && region.sheetName === sheetName
         )
       : null
     const nextKanbanValue = activeRegion

@@ -42,7 +42,11 @@ export function AdminAccessPage() {
       try {
         await refresh()
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load allowlist")
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Failed to load allowlist"
+        )
       } finally {
         setIsLoading(false)
       }
@@ -53,7 +57,7 @@ export function AdminAccessPage() {
     <div className="min-h-0 flex-1 overflow-auto p-2">
       <div className="mx-auto flex max-w-5xl flex-col gap-4">
         <section className="overflow-hidden rounded-[28px] border border-border bg-card">
-          <div className="grid gap-6 border-b border-border bg-[linear-gradient(135deg,rgba(15,118,110,0.08),rgba(234,88,12,0.08))] px-5 py-6 md:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.9fr)]">
+          <div className="access-hero-surface grid gap-6 border-b border-border px-5 py-6 md:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.9fr)]">
             <div>
               <div className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">
                 Invite-only sign up
@@ -62,11 +66,12 @@ export function AdminAccessPage() {
                 Whitelist the exact email addresses allowed to register.
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                After the first admin account is created, self-service sign up stays closed unless an email address is added here.
+                After the first admin account is created, self-service sign up
+                stays closed unless an email address is added here.
               </p>
             </div>
 
-            <div className="rounded-[24px] border border-border/80 bg-background/90 p-4 shadow-sm">
+            <div className="rounded-[24px] border border-border/80 bg-background/90 p-4 shadow-sm shadow-primary/10">
               <div className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">
                 Add email
               </div>
@@ -114,15 +119,23 @@ export function AdminAccessPage() {
                   Allowlist
                 </div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  {pendingCount} pending {pendingCount === 1 ? "invite" : "invites"}
+                  {pendingCount} pending{" "}
+                  {pendingCount === 1 ? "invite" : "invites"}
                 </div>
               </div>
-              <Button type="button" variant="outline" onClick={() => void refresh()} disabled={isLoading}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void refresh()}
+                disabled={isLoading}
+              >
                 Refresh
               </Button>
             </div>
 
-            {error ? <div className="mb-4 text-sm text-rose-600">{error}</div> : null}
+            {error ? (
+              <div className="mb-4 text-sm text-destructive">{error}</div>
+            ) : null}
 
             <div className="overflow-hidden rounded-2xl border border-border">
               <table className="w-full border-collapse text-sm">
@@ -131,19 +144,25 @@ export function AdminAccessPage() {
                     <th className="px-4 py-3 font-medium">Email</th>
                     <th className="px-4 py-3 font-medium">Added</th>
                     <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium text-right">Action</th>
+                    <th className="px-4 py-3 text-right font-medium">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={4}>
+                      <td
+                        className="px-4 py-8 text-center text-muted-foreground"
+                        colSpan={4}
+                      >
                         Loading access list...
                       </td>
                     </tr>
                   ) : entries.length === 0 ? (
                     <tr>
-                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={4}>
+                      <td
+                        className="px-4 py-8 text-center text-muted-foreground"
+                        colSpan={4}
+                      >
                         No emails have been whitelisted yet
                       </td>
                     </tr>
@@ -151,8 +170,13 @@ export function AdminAccessPage() {
                     entries.map((entry) => {
                       const claimed = Boolean(entry.claimedAt)
                       return (
-                        <tr key={entry.email} className="border-t border-border align-top">
-                          <td className="px-4 py-3 font-medium">{entry.email}</td>
+                        <tr
+                          key={entry.email}
+                          className="border-t border-border align-top"
+                        >
+                          <td className="px-4 py-3 font-medium">
+                            {entry.email}
+                          </td>
                           <td className="px-4 py-3 text-muted-foreground">
                             {formatDate(entry.createdAt)}
                           </td>

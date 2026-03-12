@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type DragEvent,
+} from "react"
 import { DragDropIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
@@ -79,10 +85,10 @@ type CardColor = (typeof CARD_COLORS)[number]
 
 const colorDotClass: Record<CardColor, string> = {
   none: "bg-transparent",
-  green: "bg-green-500",
-  red: "bg-red-500",
-  yellow: "bg-yellow-500",
-  purple: "bg-purple-500",
+  green: "bg-success",
+  red: "bg-destructive",
+  yellow: "bg-warning",
+  purple: "bg-primary",
 }
 
 const COLOR_KEYWORDS: Record<Exclude<CardColor, "none">, string[]> = {
@@ -411,7 +417,9 @@ export function KanbanView({ region }: KanbanViewProps) {
     if (!region.cardColorEnabled) {
       return
     }
-    const missingValues = cardColorValues.filter((value) => !(value in cardColorMap))
+    const missingValues = cardColorValues.filter(
+      (value) => !(value in cardColorMap)
+    )
     if (missingValues.length === 0) {
       return
     }
@@ -465,9 +473,7 @@ export function KanbanView({ region }: KanbanViewProps) {
         </div>
       </div>
       <div className="flex flex-col gap-2 p-4">
-        {Array.from(
-          visibleCols
-        ).map((col) => {
+        {Array.from(visibleCols).map((col) => {
           const value = matrix.get(row)?.get(col) ?? ""
           const label =
             labels[col - region.range.colStart] || toColumnLabel(col)
@@ -545,7 +551,8 @@ export function KanbanView({ region }: KanbanViewProps) {
               <DialogHeader>
                 <DialogTitle>Kanban Settings</DialogTitle>
                 <DialogDescription>
-                  Configure card title, visible fields, and optional card color coding.
+                  Configure card title, visible fields, and optional card color
+                  coding.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-3">
@@ -564,7 +571,8 @@ export function KanbanView({ region }: KanbanViewProps) {
                     {titleColOptions.map((col) => (
                       <option key={col} value={col}>
                         {toColumnLabel(col)} -{" "}
-                        {labels[col - region.range.colStart] || toColumnLabel(col)}
+                        {labels[col - region.range.colStart] ||
+                          toColumnLabel(col)}
                       </option>
                     ))}
                   </select>
@@ -577,7 +585,8 @@ export function KanbanView({ region }: KanbanViewProps) {
                     {titleColOptions.map((col) => {
                       const checked = visibleCols.includes(col)
                       const label =
-                        labels[col - region.range.colStart] || toColumnLabel(col)
+                        labels[col - region.range.colStart] ||
+                        toColumnLabel(col)
                       return (
                         <label
                           key={col}
@@ -659,7 +668,8 @@ export function KanbanView({ region }: KanbanViewProps) {
                     {titleColOptions.map((col) => (
                       <option key={col} value={col}>
                         {toColumnLabel(col)} -{" "}
-                        {labels[col - region.range.colStart] || toColumnLabel(col)}
+                        {labels[col - region.range.colStart] ||
+                          toColumnLabel(col)}
                       </option>
                     ))}
                   </select>
@@ -740,7 +750,12 @@ export function KanbanView({ region }: KanbanViewProps) {
                     return
                   }
                   if (payload.kind === "card") {
-                    void moveKanbanCard(region.id, payload.row, status, cards.length)
+                    void moveKanbanCard(
+                      region.id,
+                      payload.row,
+                      status,
+                      cards.length
+                    )
                     return
                   }
                   const from = statuses.indexOf(payload.status)
@@ -860,10 +875,8 @@ export function KanbanView({ region }: KanbanViewProps) {
                           current
                             ? {
                                 ...current,
-                                x:
-                                  event.clientX - (dragCursorOffset?.x ?? 0),
-                                y:
-                                  event.clientY - (dragCursorOffset?.y ?? 0),
+                                x: event.clientX - (dragCursorOffset?.x ?? 0),
+                                y: event.clientY - (dragCursorOffset?.y ?? 0),
                               }
                             : current
                         )

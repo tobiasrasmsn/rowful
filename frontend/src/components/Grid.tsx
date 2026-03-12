@@ -24,6 +24,7 @@ import { sendFileEmail } from "@/api/client"
 import { renderCellDisplayValue } from "@/lib/cellFormat"
 import { useSheetStore } from "@/store/sheetStore"
 import type { Cell, KanbanRegion, Sheet } from "@/types/sheet"
+import { CellFormattingContextMenu } from "@/components/CellFormattingContextMenu"
 import { Button } from "@/components/ui/button"
 import {
   ContextMenu,
@@ -248,7 +249,7 @@ const buildKanbanBorderStyle = (
     if (!inRow || !inCol) {
       continue
     }
-    const border = "1px solid #0ea5e9"
+    const border = "1px solid var(--color-primary)"
     if (row === region.range.rowStart) {
       borderTop = border
     }
@@ -285,7 +286,7 @@ const buildDropPreviewBorderStyle = (
   if (!inRow || !inCol) {
     return {}
   }
-  const border = "2px dashed #0ea5e9"
+  const border = "2px dashed var(--color-primary)"
   return {
     borderTop: row === dropPreviewRange.rowStart ? border : undefined,
     borderBottom: row === dropPreviewRange.rowEnd ? border : undefined,
@@ -2699,6 +2700,7 @@ export function Grid() {
             >
               Paste
             </ContextMenuItem>
+            <CellFormattingContextMenu />
             <ContextMenuSeparator />
             <ContextMenuItem
               onSelect={() => {

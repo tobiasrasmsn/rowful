@@ -18,7 +18,11 @@ export function SignupPage() {
 
   return (
     <AuthShell
-      title={bootstrap.setupRequired ? "Create the admin account" : "Request-approved sign up"}
+      title={
+        bootstrap.setupRequired
+          ? "Create the admin account"
+          : "Request-approved sign up"
+      }
       description={
         bootstrap.setupRequired
           ? "The very first account on this instance becomes the administrator and can whitelist future emails."
@@ -38,14 +42,21 @@ export function SignupPage() {
             await signup({ name, email, password })
             navigate("/", { replace: true })
           } catch (submitError) {
-            setError(submitError instanceof Error ? submitError.message : "Failed to sign up")
+            setError(
+              submitError instanceof Error
+                ? submitError.message
+                : "Failed to sign up"
+            )
           } finally {
             setIsSubmitting(false)
           }
         }}
       >
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-700" htmlFor="signup-name">
+          <label
+            className="text-sm font-medium text-foreground"
+            htmlFor="signup-name"
+          >
             Name
           </label>
           <Input
@@ -58,7 +69,10 @@ export function SignupPage() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-700" htmlFor="signup-email">
+          <label
+            className="text-sm font-medium text-foreground"
+            htmlFor="signup-email"
+          >
             Email
           </label>
           <Input
@@ -74,7 +88,10 @@ export function SignupPage() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-700" htmlFor="signup-password">
+          <label
+            className="text-sm font-medium text-foreground"
+            htmlFor="signup-password"
+          >
             Password
           </label>
           <Input
@@ -87,10 +104,14 @@ export function SignupPage() {
           />
         </div>
 
-        {error ? <div className="text-sm text-rose-600">{error}</div> : null}
+        {error ? <div className="text-sm text-destructive">{error}</div> : null}
 
         <Button className="w-full" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Creating account..." : bootstrap.setupRequired ? "Create admin account" : "Complete sign up"}
+          {isSubmitting
+            ? "Creating account..."
+            : bootstrap.setupRequired
+              ? "Create admin account"
+              : "Complete sign up"}
         </Button>
       </form>
     </AuthShell>

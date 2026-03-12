@@ -24,7 +24,74 @@
   --border: oklch(0.88 0.01 95.1);
   --input: oklch(0.86 0.01 95.1);
   --ring: oklch(0.55 0.11 244.6);
+  --success: oklch(0.66 0.17 149.2);
+  --success-foreground: oklch(0.31 0.05 149.2);
+  --success-soft: oklch(0.93 0.05 149.2);
+  --warning: oklch(0.75 0.14 83.4);
+  --warning-foreground: oklch(0.37 0.05 83.4);
+  --warning-soft: oklch(0.94 0.05 83.4);
+  --overlay: oklch(0.225 0.01 95.1 / 0.12);
+  --background-gradient-start: oklch(0.988 0.002 95.1);
+  --background-gradient-end: oklch(0.975 0.003 95.1);
+  --auth-glow-primary: oklch(0.72 0.11 244.6 / 0.16);
+  --auth-glow-secondary: oklch(0.75 0.14 83.4 / 0.14);
+  --auth-overlay: oklch(0.225 0.01 95.1 / 0.04);
+  --domains-hero-start: oklch(0.72 0.11 244.6 / 0.12);
+  --domains-hero-end: oklch(0.955 0.006 95.1 / 0.75);
+  --access-hero-start: oklch(0.66 0.17 149.2 / 0.1);
+  --access-hero-end: oklch(0.75 0.14 83.4 / 0.12);
+  --primary-strong: oklch(0.39 0.09 244.6 / 0.9);
+  --primary-soft: oklch(0.39 0.09 244.6 / 0.08);
+  --primary-soft-strong: oklch(0.39 0.09 244.6 / 0.12);
+  --loading-strip-start: oklch(0.39 0.09 244.6 / 0.45);
+  --loading-strip-center: oklch(0.39 0.09 244.6 / 0.7);
+  --loading-shimmer-start: oklch(0.985 0.001 95.1 / 0);
+  --loading-shimmer-center: oklch(0.985 0.001 95.1 / 0.95);
   --radius: 0.4rem;
+}
+
+.dark {
+  --background: oklch(0.205 0.012 264.5);
+  --foreground: oklch(0.96 0.004 95.1);
+  --card: oklch(0.24 0.013 264.5);
+  --card-foreground: oklch(0.96 0.004 95.1);
+  --popover: oklch(0.25 0.013 264.5);
+  --popover-foreground: oklch(0.96 0.004 95.1);
+  --primary: oklch(0.72 0.11 244.6);
+  --primary-foreground: oklch(0.205 0.012 264.5);
+  --secondary: oklch(0.305 0.012 264.5);
+  --secondary-foreground: oklch(0.94 0.004 95.1);
+  --muted: oklch(0.29 0.012 264.5);
+  --muted-foreground: oklch(0.73 0.018 95.1);
+  --accent: oklch(0.34 0.03 111.3);
+  --accent-foreground: oklch(0.96 0.004 95.1);
+  --destructive: oklch(0.68 0.16 28.4);
+  --border: oklch(0.34 0.012 264.5);
+  --input: oklch(0.34 0.012 264.5);
+  --ring: oklch(0.72 0.11 244.6);
+  --success: oklch(0.76 0.15 149.2);
+  --success-foreground: oklch(0.94 0.02 149.2);
+  --success-soft: oklch(0.38 0.07 149.2 / 0.3);
+  --warning: oklch(0.8 0.14 83.4);
+  --warning-foreground: oklch(0.96 0.02 83.4);
+  --warning-soft: oklch(0.42 0.07 83.4 / 0.28);
+  --overlay: oklch(0.05 0 0 / 0.45);
+  --background-gradient-start: oklch(0.22 0.013 264.5);
+  --background-gradient-end: oklch(0.17 0.01 264.5);
+  --auth-glow-primary: oklch(0.72 0.11 244.6 / 0.2);
+  --auth-glow-secondary: oklch(0.8 0.14 83.4 / 0.16);
+  --auth-overlay: oklch(0.96 0.004 95.1 / 0.035);
+  --domains-hero-start: oklch(0.72 0.11 244.6 / 0.18);
+  --domains-hero-end: oklch(0.29 0.012 264.5 / 0.9);
+  --access-hero-start: oklch(0.76 0.15 149.2 / 0.18);
+  --access-hero-end: oklch(0.42 0.07 83.4 / 0.28);
+  --primary-strong: oklch(0.72 0.11 244.6 / 0.95);
+  --primary-soft: oklch(0.72 0.11 244.6 / 0.16);
+  --primary-soft-strong: oklch(0.72 0.11 244.6 / 0.24);
+  --loading-strip-start: oklch(0.72 0.11 244.6 / 0.4);
+  --loading-strip-center: oklch(0.72 0.11 244.6 / 0.65);
+  --loading-shimmer-start: oklch(0.96 0.004 95.1 / 0);
+  --loading-shimmer-center: oklch(0.96 0.004 95.1 / 0.55);
 }
 
 @theme inline {
@@ -44,6 +111,13 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-soft: var(--warning-soft);
+  --color-overlay: var(--overlay);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -67,10 +141,62 @@
     @apply bg-background text-foreground antialiased;
     background-image: linear-gradient(
       to bottom,
-      oklch(0.988 0.002 95.1),
-      oklch(0.975 0.003 95.1)
+      var(--background-gradient-start),
+      var(--background-gradient-end)
     );
   }
+}
+
+.loading-screen-surface {
+  background-image: linear-gradient(
+    180deg,
+    var(--background-gradient-start),
+    var(--background-gradient-end)
+  );
+}
+
+.auth-shell-background {
+  background-image:
+    radial-gradient(
+      circle at top left,
+      var(--auth-glow-primary),
+      transparent 32%
+    ),
+    radial-gradient(
+      circle at bottom right,
+      var(--auth-glow-secondary),
+      transparent 28%
+    ),
+    linear-gradient(
+      180deg,
+      var(--background-gradient-start),
+      var(--background-gradient-end)
+    );
+}
+
+.auth-shell-overlay {
+  background-image: linear-gradient(
+    135deg,
+    transparent 0%,
+    var(--auth-overlay) 50%,
+    transparent 100%
+  );
+}
+
+.domains-hero-surface {
+  background-image: linear-gradient(
+    135deg,
+    var(--domains-hero-start),
+    var(--domains-hero-end)
+  );
+}
+
+.access-hero-surface {
+  background-image: linear-gradient(
+    135deg,
+    var(--access-hero-start),
+    var(--access-hero-end)
+  );
 }
 
 .loading-strip {
@@ -78,9 +204,9 @@
   overflow: hidden;
   background: linear-gradient(
     90deg,
-    rgba(37, 99, 235, 0.45) 0%,
-    rgba(37, 99, 235, 0.7) 55%,
-    rgba(37, 99, 235, 0.45) 100%
+    var(--loading-strip-start) 0%,
+    var(--loading-strip-center) 55%,
+    var(--loading-strip-start) 100%
   );
 }
 
@@ -93,9 +219,9 @@
   width: 30%;
   background: linear-gradient(
     90deg,
-    rgba(147, 197, 253, 0) 0%,
-    rgba(191, 219, 254, 0.95) 50%,
-    rgba(147, 197, 253, 0) 100%
+    var(--loading-shimmer-start) 0%,
+    var(--loading-shimmer-center) 50%,
+    var(--loading-shimmer-start) 100%
   );
   animation: loading-shimmer 1.15s ease-in-out infinite;
 }
@@ -128,12 +254,16 @@
 }
 
 .sheet-grid revo-grid {
-  --revo-grid-primary: #2d6eff;
-  --revo-grid-primary-transparent: rgba(45, 110, 255, 0.9);
+  --revo-grid-primary: var(--color-primary);
+  --revo-grid-primary-transparent: var(--primary-strong);
+  --revo-grid-background: var(--color-background);
   --revo-grid-cell-border: var(--color-border);
+  --revo-grid-foreground: var(--color-foreground);
   --revo-grid-header-border: var(--color-border);
-  --revo-grid-focused-bg: rgba(45, 110, 255, 0.08);
+  --revo-grid-focused-bg: var(--primary-soft);
+  --revo-grid-text: var(--color-foreground);
   border: 0;
+  color: var(--color-foreground);
   font-size: var(--planar-grid-font-size, 12px);
 }
 
@@ -154,6 +284,7 @@
 }
 
 .sheet-grid revogr-data .rgCell {
+  color: var(--color-foreground);
   box-shadow:
     0 -1px 0 0 var(--revo-grid-cell-border) inset,
     -1px 0 0 0 var(--revo-grid-cell-border) inset;
@@ -163,10 +294,28 @@
 }
 
 .sheet-grid revogr-header .rgHeaderCell {
+  background-color: var(--color-card);
+  color: var(--color-muted-foreground);
   box-shadow:
     -1px 0 0 0 var(--revo-grid-header-border) inset,
     0 -1px 0 0 var(--revo-grid-header-border),
     0 -1px 0 0 var(--revo-grid-header-border) inset;
+}
+
+.sheet-grid .rowHeaders .rgHeaderCell,
+.sheet-grid revogr-header .header-rgRow {
+  background-color: var(--color-card);
+  color: var(--color-muted-foreground);
+}
+
+.sheet-grid .rowHeaders .rgCell,
+.sheet-grid [row-header="true"] .rgCell,
+.sheet-grid revogr-viewport-scroll[row-header] .rgCell {
+  background-color: var(--color-card);
+  color: var(--color-muted-foreground);
+  box-shadow:
+    0 -1px 0 0 var(--revo-grid-header-border) inset,
+    -1px 0 0 0 var(--revo-grid-header-border) inset;
 }
 
 .sheet-grid revogr-data .rgCell,
@@ -174,12 +323,34 @@
   padding-inline: 8px;
 }
 
+.sheet-grid revo-grid revogr-edit {
+  background-color: var(--revo-grid-background);
+  color: var(--revo-grid-text);
+  box-shadow: 0 0 0 1px var(--revo-grid-primary) inset;
+}
+
+.sheet-grid revo-grid revogr-edit input {
+  border: 0;
+  background-color: transparent;
+  color: inherit;
+  caret-color: var(--revo-grid-primary);
+  font: inherit;
+  padding-inline: 8px;
+  outline: none;
+}
+
+.sheet-grid .rowHeaders .rgCell,
+.sheet-grid [row-header="true"] .rgCell,
+.sheet-grid revogr-viewport-scroll[row-header] .rgCell {
+  padding-inline: 8px;
+}
+
 .sheet-grid .selection-border-range {
-  border: 2px solid rgba(45, 110, 255, 0.95);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
+  border: 2px solid var(--primary-strong);
+  box-shadow: 0 0 0 1px var(--color-background);
 }
 
 .sheet-grid .temp-bg-range,
 .sheet-grid .focused-cell {
-  background: rgba(45, 110, 255, 0.12);
+  background: var(--primary-soft-strong);
 }
