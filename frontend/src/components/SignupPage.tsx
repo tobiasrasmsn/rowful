@@ -21,8 +21,8 @@ export function SignupPage() {
       title="Create your account"
       description={
         bootstrap.setupRequired
-          ? "Set up the first Planar admin account."
-          : "Create a Planar account to get started."
+          ? "Set up the first Rowful admin account."
+          : "Create a Rowful account to get started."
       }
       alternateLabel="Already have an account?"
       alternateHref="/login"
@@ -60,7 +60,7 @@ export function SignupPage() {
             autoComplete="name"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Planar Admin"
+            placeholder="First & Last Name"
             className="h-10 rounded-lg focus-within:ring-0!"
           />
         </div>

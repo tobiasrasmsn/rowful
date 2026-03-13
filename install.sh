@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="https://github.com/tobiasrasmsn/planar.git"
+REPO_URL="https://github.com/tobiasrasmsn/rowful.git"
 REPO_BRANCH="main"
-INSTALL_DIR="${PLANAR_INSTALL_DIR:-/opt/planar}"
+INSTALL_DIR="${ROWFUL_INSTALL_DIR:-/opt/rowful}"
 
 if ! command -v apt-get >/dev/null 2>&1; then
   echo "Error: This installer supports Ubuntu/Debian systems with apt-get."
@@ -160,7 +160,7 @@ if [[ -d "$INSTALL_DIR/.git" ]]; then
   $SUDO git -C "$INSTALL_DIR" pull --ff-only origin "$REPO_BRANCH"
 else
   if [[ -e "$INSTALL_DIR" ]]; then
-    echo "Error: $INSTALL_DIR exists but is not a git repository. Remove it or set PLANAR_INSTALL_DIR."
+    echo "Error: $INSTALL_DIR exists but is not a git repository. Remove it or set ROWFUL_INSTALL_DIR."
     exit 1
   fi
   $SUDO git clone --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR"

@@ -24,7 +24,7 @@ export function AuthShell({
           <div className="z-10 flex flex-row items-center gap-2">
             <img
               src="/logo.png"
-              alt="Planar Logo"
+              alt="Rowful Logo"
               className="size-6 invert dark:invert-0"
             />
             <h2 className="text-2xl">Rowful</h2>
