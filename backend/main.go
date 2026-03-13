@@ -33,7 +33,7 @@ func main() {
 	filesHandler := handlers.NewFilesHandler(store, storageStore)
 	domainsHandler := handlers.NewDomainsHandler(cfg, storageStore)
 	emailProfilesHandler := handlers.NewEmailProfilesHandler(storageStore)
-	authHandler := handlers.NewAuthHandler(storageStore)
+	authHandler := handlers.NewAuthHandler(cfg, storageStore)
 
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
@@ -97,9 +97,11 @@ func main() {
 
 			private.Group(func(admin chi.Router) {
 				admin.Use(authHandler.RequireAdmin)
-				admin.Get("/domains", domainsHandler.List)
-				admin.Post("/domains/check", domainsHandler.Check)
-				admin.Post("/domains", domainsHandler.Create)
+				if cfg.ManagedDomains {
+					admin.Get("/domains", domainsHandler.List)
+					admin.Post("/domains/check", domainsHandler.Check)
+					admin.Post("/domains", domainsHandler.Create)
+				}
 				admin.Get("/admin/allowlist", authHandler.ListAllowlist)
 				admin.Post("/admin/allowlist", authHandler.AddAllowlist)
 				admin.Delete("/admin/allowlist", authHandler.DeleteAllowlist)

@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"rowful/config"
 	"rowful/models"
 	"rowful/storage"
 )
@@ -36,6 +37,7 @@ const (
 
 type AuthHandler struct {
 	storage *storage.Store
+	cfg     config.Config
 }
 
 type loginRequest struct {
@@ -53,8 +55,11 @@ type allowlistRequest struct {
 	Email string `json:"email"`
 }
 
-func NewAuthHandler(storageStore *storage.Store) AuthHandler {
-	return AuthHandler{storage: storageStore}
+func NewAuthHandler(cfg config.Config, storageStore *storage.Store) AuthHandler {
+	return AuthHandler{
+		storage: storageStore,
+		cfg:     cfg,
+	}
 }
 
 func (h AuthHandler) Session(w http.ResponseWriter, r *http.Request) {
@@ -104,10 +109,11 @@ func (h AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, models.AuthSessionResponse{
-		Authenticated: true,
-		User:          &user,
-		CSRFToken:     csrfToken,
-		Bootstrap:     bootstrap,
+		Authenticated:         true,
+		User:                  &user,
+		CSRFToken:             csrfToken,
+		Bootstrap:             bootstrap,
+		ManagedDomainsEnabled: h.cfg.ManagedDomains,
 	})
 }
 
@@ -157,10 +163,11 @@ func (h AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, models.AuthSessionResponse{
-		Authenticated: true,
-		User:          &user,
-		CSRFToken:     csrfToken,
-		Bootstrap:     bootstrap,
+		Authenticated:         true,
+		User:                  &user,
+		CSRFToken:             csrfToken,
+		Bootstrap:             bootstrap,
+		ManagedDomainsEnabled: h.cfg.ManagedDomains,
 	})
 }
 
@@ -175,8 +182,9 @@ func (h AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, models.AuthSessionResponse{
-		Authenticated: false,
-		Bootstrap:     bootstrap,
+		Authenticated:         false,
+		Bootstrap:             bootstrap,
+		ManagedDomainsEnabled: h.cfg.ManagedDomains,
 	})
 }
 
@@ -273,22 +281,27 @@ func CurrentUser(r *http.Request) (models.AuthUser, bool) {
 func (h AuthHandler) sessionResponse(r *http.Request) (models.AuthSessionResponse, bool) {
 	bootstrap, err := h.storage.GetBootstrapState()
 	if err != nil {
-		return models.AuthSessionResponse{Authenticated: false}, false
+		return models.AuthSessionResponse{
+			Authenticated:         false,
+			ManagedDomainsEnabled: h.cfg.ManagedDomains,
+		}, false
 	}
 
 	session, user, err := h.authenticateRequest(r)
 	if err != nil {
 		return models.AuthSessionResponse{
-			Authenticated: false,
-			Bootstrap:     bootstrap,
+			Authenticated:         false,
+			Bootstrap:             bootstrap,
+			ManagedDomainsEnabled: h.cfg.ManagedDomains,
 		}, hasSessionCookie(r)
 	}
 
 	return models.AuthSessionResponse{
-		Authenticated: true,
-		User:          &user,
-		CSRFToken:     session.CSRFToken,
-		Bootstrap:     bootstrap,
+		Authenticated:         true,
+		User:                  &user,
+		CSRFToken:             session.CSRFToken,
+		Bootstrap:             bootstrap,
+		ManagedDomainsEnabled: h.cfg.ManagedDomains,
 	}, false
 }
 

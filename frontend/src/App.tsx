@@ -282,6 +282,18 @@ function RequireAdmin() {
   return <Outlet />
 }
 
+function RequireManagedDomains() {
+  const managedDomainsEnabled = useAuthStore(
+    (state) => state.managedDomainsEnabled
+  )
+
+  if (!managedDomainsEnabled) {
+    return <Navigate to="/files" replace />
+  }
+
+  return <Outlet />
+}
+
 function AppShell() {
   const location = useLocation()
   const isSheetRoute = location.pathname.startsWith("/sheet/")
@@ -329,7 +341,9 @@ export function App() {
             <Route path="/email-profiles" element={<EmailProfilesPage />} />
             <Route path="/sheet/:id" element={<SheetRoutePage />} />
             <Route element={<RequireAdmin />}>
-              <Route path="/domains" element={<DomainsPage />} />
+              <Route element={<RequireManagedDomains />}>
+                <Route path="/domains" element={<DomainsPage />} />
+              </Route>
             </Route>
           </Route>
         </Route>
