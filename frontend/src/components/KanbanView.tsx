@@ -269,7 +269,7 @@ function KanbanColumnDropZone({
     <div
       ref={ref}
       data-kanban-column-id={getKanbanColumnDomId(status)}
-      className="flex min-h-16 flex-col gap-2"
+      className="flex min-h-16 flex-col gap-1.5"
     >
       {children}
     </div>
@@ -1228,10 +1228,10 @@ export function KanbanView({ region }: KanbanViewProps) {
                         activeDropSlot.index === 0
                           ? "border-primary bg-primary/10"
                           : "border-transparent"
-                      } ${cards.length === 0 ? "min-h-24 flex-1" : "h-3"}`}
+                      } ${cards.length === 0 ? "min-h-24 flex-1" : "h-2"}`}
                     />
                     {cards.map((row, cardIndex) => (
-                      <div key={row} className="flex flex-col gap-2">
+                      <div key={row} className="flex flex-col gap-1.5">
                         <KanbanCardItem
                           row={row}
                           status={status}
@@ -1239,7 +1239,7 @@ export function KanbanView({ region }: KanbanViewProps) {
                           renderCardBody={renderCardBody}
                         />
                         <div
-                          className={`h-3 rounded-md border-2 border-dashed transition ${
+                          className={`h-2 rounded-md border-2 border-dashed transition ${
                             activeDropSlot?.status === status &&
                             activeDropSlot.index === cardIndex + 1
                               ? "border-primary bg-primary/10"
