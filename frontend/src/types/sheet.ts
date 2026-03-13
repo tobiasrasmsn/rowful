@@ -94,11 +94,32 @@ export type SMTPSettings = {
 
 export type FileSettings = {
   currency: string
-  email: SMTPSettings
+  emailProfileId: string
 }
 
 export type FileSettingsResponse = {
   settings: FileSettings
+}
+
+export type EmailProfile = {
+  id: string
+  nickname: string
+  smtp: SMTPSettings
+  createdAt: string
+  updatedAt: string
+}
+
+export type EmailProfileInput = {
+  nickname: string
+  smtp: SMTPSettings
+}
+
+export type EmailProfilesResponse = {
+  profiles: EmailProfile[]
+}
+
+export type EmailProfileResponse = {
+  profile: EmailProfile
 }
 
 export type SendEmailRequest = {

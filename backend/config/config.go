@@ -13,6 +13,7 @@ type Config struct {
 	AllowedOrigins   []string
 	DatabasePath     string
 	UploadDir        string
+	AppEncryptionKey string
 	PublicIPs        []string
 	CaddyAdminURL    string
 	CaddyConfigPath  string
@@ -33,6 +34,7 @@ func Load() Config {
 		AllowedOrigins:   allowedOrigins,
 		DatabasePath:     getEnv("DB_PATH", "./rowful.db"),
 		UploadDir:        getEnv("UPLOAD_DIR", "./uploads"),
+		AppEncryptionKey: strings.TrimSpace(os.Getenv("APP_ENCRYPTION_KEY")),
 		PublicIPs:        loadPublicIPs(),
 		CaddyAdminURL:    getEnv("CADDY_ADMIN_URL", "http://caddy:2019"),
 		CaddyConfigPath:  getEnv("CADDY_CONFIG_PATH", "/etc/caddy/Caddyfile"),

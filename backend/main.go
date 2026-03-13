@@ -22,7 +22,7 @@ func main() {
 	if err := os.MkdirAll(cfg.UploadDir, 0o755); err != nil {
 		log.Fatal(fmt.Errorf("failed to create upload directory: %w", err))
 	}
-	storageStore, err := storage.New(cfg.DatabasePath)
+	storageStore, err := storage.New(cfg.DatabasePath, cfg.AppEncryptionKey)
 	if err != nil {
 		log.Fatal(fmt.Errorf("failed to initialize sqlite storage: %w", err))
 	}
@@ -32,6 +32,7 @@ func main() {
 	sheetHandler := handlers.NewSheetHandler(store, storageStore)
 	filesHandler := handlers.NewFilesHandler(store, storageStore)
 	domainsHandler := handlers.NewDomainsHandler(cfg, storageStore)
+	emailProfilesHandler := handlers.NewEmailProfilesHandler(storageStore)
 	authHandler := handlers.NewAuthHandler(storageStore)
 
 	router := chi.NewRouter()
@@ -82,6 +83,10 @@ func main() {
 			private.Get("/files", filesHandler.List)
 			private.Post("/files", filesHandler.Create)
 			private.Get("/files/recent", filesHandler.Recent)
+			private.Get("/email-profiles", emailProfilesHandler.List)
+			private.Post("/email-profiles", emailProfilesHandler.Create)
+			private.Patch("/email-profiles/{id}", emailProfilesHandler.Update)
+			private.Delete("/email-profiles/{id}", emailProfilesHandler.Delete)
 			private.Post("/files/{id}/open", filesHandler.Open)
 			private.Get("/files/{id}/settings", filesHandler.GetSettings)
 			private.Patch("/files/{id}/settings", filesHandler.UpdateSettings)

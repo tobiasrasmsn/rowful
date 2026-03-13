@@ -13,6 +13,7 @@ import { toast } from "sonner"
 
 import { CellInspector } from "@/components/CellInspector"
 import { DomainsPage } from "@/components/DomainsPage"
+import { EmailProfilesPage } from "@/components/EmailProfilesPage"
 import { FileTabsBar } from "@/components/FileTabsBar"
 import { FilesBrowser } from "@/components/FilesBrowser"
 import { Grid } from "@/components/Grid"
@@ -325,6 +326,7 @@ export function App() {
           <Route element={<AppShell />}>
             <Route path="/" element={<RootRedirect />} />
             <Route path="/files" element={<FilesBrowser />} />
+            <Route path="/email-profiles" element={<EmailProfilesPage />} />
             <Route path="/sheet/:id" element={<SheetRoutePage />} />
             <Route element={<RequireAdmin />}>
               <Route path="/domains" element={<DomainsPage />} />

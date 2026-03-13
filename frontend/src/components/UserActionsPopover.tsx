@@ -50,6 +50,7 @@ export function UserActionsPopover({ className }: UserActionsPopoverProps) {
 
   const isFilesPage = location.pathname.startsWith("/files")
   const isDomainsPage = location.pathname.startsWith("/domains")
+  const isEmailProfilesPage = location.pathname.startsWith("/email-profiles")
   const label = user?.name ?? user?.email
   const selectedTheme = theme === "system" ? resolvedTheme : theme
 
@@ -86,6 +87,13 @@ export function UserActionsPopover({ className }: UserActionsPopoverProps) {
             onClick={() => navigate("/files")}
           >
             Browse Files
+          </Button>
+          <Button
+            variant={isEmailProfilesPage ? "secondary" : "ghost"}
+            className="w-full justify-start"
+            onClick={() => navigate("/email-profiles")}
+          >
+            Email Profiles
           </Button>
           <Separator className="my-1" />
           <div className="space-y-1">

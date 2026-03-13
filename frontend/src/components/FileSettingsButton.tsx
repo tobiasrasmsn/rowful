@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Settings02Icon } from "@hugeicons/core-free-icons"
+import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 
-import { sendFileTestEmail } from "@/api/client"
+import { listEmailProfiles, sendFileTestEmail } from "@/api/client"
 import { useSheetStore } from "@/store/sheetStore"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import type { EmailProfile } from "@/types/sheet"
 
 const FONT_OPTIONS = [
   "Arial",
@@ -38,26 +40,56 @@ export function FileSettingsButton({ className }: FileSettingsButtonProps) {
   const fileSettings = useSheetStore((state) => state.fileSettings)
   const currency = fileSettings.currency
   const setFileCurrency = useSheetStore((state) => state.setFileCurrency)
-  const saveEmailSettings = useSheetStore((state) => state.saveEmailSettings)
+  const setFileEmailProfile = useSheetStore(
+    (state) => state.setFileEmailProfile
+  )
   const sheetFontFamily = useSheetStore((state) => state.sheetFontFamily)
   const setSheetFontFamily = useSheetStore((state) => state.setSheetFontFamily)
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState("general")
-  const [emailDraft, setEmailDraft] = useState(fileSettings.email)
-  const [testRecipient, setTestRecipient] = useState(
-    fileSettings.email.fromEmail
-  )
-  const [isSavingEmail, setIsSavingEmail] = useState(false)
+  const [emailProfiles, setEmailProfiles] = useState<EmailProfile[]>([])
+  const [testRecipient, setTestRecipient] = useState("")
+  const [isLoadingProfiles, setIsLoadingProfiles] = useState(false)
+  const [isSavingEmailProfile, setIsSavingEmailProfile] = useState(false)
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false)
+
+  const selectedEmailProfile = useMemo(
+    () =>
+      emailProfiles.find(
+        (profile) => profile.id === fileSettings.emailProfileId
+      ) ?? null,
+    [emailProfiles, fileSettings.emailProfileId]
+  )
 
   useEffect(() => {
     if (!open) {
       return
     }
-    setEmailDraft(fileSettings.email)
-    setTestRecipient(fileSettings.email.fromEmail)
     setSettingsTab("general")
-  }, [fileSettings.email, open])
+    setIsLoadingProfiles(true)
+    void (async () => {
+      try {
+        const response = await listEmailProfiles()
+        setEmailProfiles(response.profiles)
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to load email profiles"
+        )
+      } finally {
+        setIsLoadingProfiles(false)
+      }
+    })()
+  }, [open])
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    setTestRecipient(selectedEmailProfile?.smtp.fromEmail ?? "")
+  }, [open, selectedEmailProfile])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -162,147 +194,76 @@ export function FileSettingsButton({ className }: FileSettingsButtonProps) {
               <div className="space-y-1">
                 <h4 className="text-sm font-medium">Email</h4>
                 <p className="text-xs text-muted-foreground">
-                  SMTP settings stored per file.
+                  Choose one of your reusable email profiles for this file.
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="col-span-2 grid gap-1">
-                  <label
-                    className="text-xs text-muted-foreground"
-                    htmlFor="smtp-host"
-                  >
-                    SMTP Host
-                  </label>
-                  <Input
-                    id="smtp-host"
-                    value={emailDraft.host}
-                    onChange={(event) =>
-                      setEmailDraft((current) => ({
-                        ...current,
-                        host: event.target.value,
-                      }))
-                    }
-                    placeholder="smtp.example.com"
-                  />
-                </div>
+              <div className="grid gap-3">
                 <div className="grid gap-1">
                   <label
                     className="text-xs text-muted-foreground"
-                    htmlFor="smtp-port"
+                    htmlFor="file-email-profile-select"
                   >
-                    SMTP Port
+                    Email profile
                   </label>
-                  <Input
-                    id="smtp-port"
-                    type="number"
-                    min={1}
-                    max={65535}
-                    value={String(emailDraft.port)}
-                    onChange={(event) =>
-                      setEmailDraft((current) => ({
-                        ...current,
-                        port: Number(event.target.value) || 587,
-                      }))
+                  <select
+                    id="file-email-profile-select"
+                    className="h-9 w-full rounded-md border border-input bg-background px-2"
+                    value={fileSettings.emailProfileId}
+                    onChange={(event) => {
+                      setIsSavingEmailProfile(true)
+                      void (async () => {
+                        try {
+                          await setFileEmailProfile(event.target.value)
+                        } finally {
+                          setIsSavingEmailProfile(false)
+                        }
+                      })()
+                    }}
+                    disabled={
+                      !workbook ||
+                      isLoadingProfiles ||
+                      isSavingEmailProfile ||
+                      isSendingTestEmail
                     }
-                  />
-                </div>
-                <div className="flex items-end gap-2 pb-2">
-                  <input
-                    id="smtp-use-tls"
-                    type="checkbox"
-                    checked={emailDraft.useTLS}
-                    onChange={(event) =>
-                      setEmailDraft((current) => ({
-                        ...current,
-                        useTLS: event.target.checked,
-                      }))
-                    }
-                  />
-                  <label
-                    className="text-xs text-muted-foreground"
-                    htmlFor="smtp-use-tls"
                   >
-                    Use TLS
-                  </label>
+                    <option value="">No profile selected</option>
+                    {emailProfiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.nickname}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Manage SMTP credentials from your Email Profiles page.
+                  </p>
                 </div>
-                <div className="grid gap-1">
-                  <label
-                    className="text-xs text-muted-foreground"
-                    htmlFor="smtp-username"
-                  >
-                    Username
-                  </label>
-                  <Input
-                    id="smtp-username"
-                    value={emailDraft.username}
-                    onChange={(event) =>
-                      setEmailDraft((current) => ({
-                        ...current,
-                        username: event.target.value,
-                      }))
-                    }
-                    placeholder="smtp-user"
-                  />
-                </div>
-                <div className="grid gap-1">
-                  <label
-                    className="text-xs text-muted-foreground"
-                    htmlFor="smtp-password"
-                  >
-                    Password
-                  </label>
-                  <Input
-                    id="smtp-password"
-                    type="password"
-                    value={emailDraft.password}
-                    onChange={(event) =>
-                      setEmailDraft((current) => ({
-                        ...current,
-                        password: event.target.value,
-                      }))
-                    }
-                    placeholder="••••••••"
-                  />
-                </div>
-                <div className="grid gap-1">
-                  <label
-                    className="text-xs text-muted-foreground"
-                    htmlFor="smtp-from-name"
-                  >
-                    From Name
-                  </label>
-                  <Input
-                    id="smtp-from-name"
-                    value={emailDraft.fromName}
-                    onChange={(event) =>
-                      setEmailDraft((current) => ({
-                        ...current,
-                        fromName: event.target.value,
-                      }))
-                    }
-                    placeholder="Finance Bot"
-                  />
-                </div>
-                <div className="grid gap-1">
-                  <label
-                    className="text-xs text-muted-foreground"
-                    htmlFor="smtp-from-email"
-                  >
-                    From Email
-                  </label>
-                  <Input
-                    id="smtp-from-email"
-                    type="email"
-                    value={emailDraft.fromEmail}
-                    onChange={(event) =>
-                      setEmailDraft((current) => ({
-                        ...current,
-                        fromEmail: event.target.value,
-                      }))
-                    }
-                    placeholder="noreply@example.com"
-                  />
-                </div>
+
+                {selectedEmailProfile ? (
+                  <div className="grid gap-2 rounded-lg border border-border bg-muted/20 p-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-medium">
+                        {selectedEmailProfile.nickname}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {selectedEmailProfile.smtp.useTLS ? "TLS" : "No TLS"} ·{" "}
+                        {selectedEmailProfile.smtp.host}:
+                        {selectedEmailProfile.smtp.port}
+                      </span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      From {selectedEmailProfile.smtp.fromName || "-"} &lt;
+                      {selectedEmailProfile.smtp.fromEmail || "-"}&gt;
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+                    {isLoadingProfiles
+                      ? "Loading email profiles..."
+                      : emailProfiles.length === 0
+                        ? "No email profiles yet. Create one first, then select it here."
+                        : "Select an email profile to use for sends from this file."}
+                  </div>
+                )}
               </div>
               <div className="flex justify-end">
                 <div className="flex w-full items-end justify-between gap-2">
@@ -330,7 +291,6 @@ export function FileSettingsButton({ className }: FileSettingsButtonProps) {
                       }
                       setIsSendingTestEmail(true)
                       try {
-                        await saveEmailSettings(emailDraft)
                         await sendFileTestEmail(workbook.id, {
                           to: testRecipient.trim(),
                         })
@@ -345,23 +305,24 @@ export function FileSettingsButton({ className }: FileSettingsButtonProps) {
                         setIsSendingTestEmail(false)
                       }
                     }}
-                    disabled={!workbook || isSendingTestEmail || isSavingEmail}
+                    disabled={
+                      !workbook ||
+                      !fileSettings.emailProfileId ||
+                      isSendingTestEmail ||
+                      isSavingEmailProfile
+                    }
                   >
                     {isSendingTestEmail ? "Sending..." : "Send Test Email"}
                   </Button>
                   <Button
                     size="sm"
-                    onClick={async () => {
-                      setIsSavingEmail(true)
-                      try {
-                        await saveEmailSettings(emailDraft)
-                      } finally {
-                        setIsSavingEmail(false)
-                      }
+                    variant="outline"
+                    onClick={() => {
+                      setOpen(false)
+                      navigate("/email-profiles")
                     }}
-                    disabled={!workbook || isSavingEmail || isSendingTestEmail}
                   >
-                    {isSavingEmail ? "Saving..." : "Save Email Settings"}
+                    Manage Profiles
                   </Button>
                 </div>
               </div>

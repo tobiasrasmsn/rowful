@@ -1,5 +1,8 @@
 import type {
   CellStyle,
+  EmailProfileInput,
+  EmailProfileResponse,
+  EmailProfilesResponse,
   FileSettings,
   FileSettingsResponse,
   FilesResponse,
@@ -16,13 +19,12 @@ import type {
   ManagedDomainResponse,
   ManagedDomainsResponse,
 } from "@/types/domain"
-import type {
-  AllowlistResponse,
-  AuthSessionResponse,
-} from "@/types/auth"
+import type { AllowlistResponse, AuthSessionResponse } from "@/types/auth"
 import { getCSRFToken, handleUnauthorized } from "@/lib/authSession"
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/$/, "")
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "")
+  .trim()
+  .replace(/\/$/, "")
 
 type ApiFetchOptions = {
   includeCSRF?: boolean
@@ -37,7 +39,8 @@ async function apiFetch(
   const requestInit = init ?? {}
   const method = (requestInit.method ?? "GET").toUpperCase()
   const headers = new Headers(requestInit.headers)
-  const shouldIncludeCSRF = options.includeCSRF ?? !["GET", "HEAD", "OPTIONS"].includes(method)
+  const shouldIncludeCSRF =
+    options.includeCSRF ?? !["GET", "HEAD", "OPTIONS"].includes(method)
 
   if (shouldIncludeCSRF) {
     const csrfToken = getCSRFToken()
@@ -110,7 +113,12 @@ export async function uploadWorkbook(file: File): Promise<UploadResponse> {
 export async function fetchSheet(
   workbookId: string,
   sheetName?: string,
-  window?: { rowStart?: number; rowCount?: number; colStart?: number; colCount?: number }
+  window?: {
+    rowStart?: number
+    rowCount?: number
+    colStart?: number
+    colCount?: number
+  }
 ): Promise<SheetResponse> {
   const params = new URLSearchParams()
   if (sheetName) {
@@ -152,11 +160,14 @@ export async function updateCell(
   workbookId: string,
   payload: { sheet: string; row: number; col: number; value: string }
 ): Promise<SheetResponse> {
-  const response = await apiFetch(`${API_BASE_URL}/api/sheet/${workbookId}/cell`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/sheet/${workbookId}/cell`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
   return parseJson<SheetResponse>(response)
 }
 
@@ -164,11 +175,14 @@ export async function applyStyle(
   workbookId: string,
   payload: { sheet: string; target: SelectionTarget; patch: Partial<CellStyle> }
 ): Promise<{ status: string }> {
-  const response = await apiFetch(`${API_BASE_URL}/api/sheet/${workbookId}/style`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/sheet/${workbookId}/style`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
   return parseJson<{ status: string }>(response)
 }
 
@@ -191,11 +205,14 @@ export async function clearValuesRange(
   workbookId: string,
   payload: { sheet: string; target: SelectionTarget }
 ): Promise<{ status: string }> {
-  const response = await apiFetch(`${API_BASE_URL}/api/sheet/${workbookId}/clear-values`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/sheet/${workbookId}/clear-values`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
   return parseJson<{ status: string }>(response)
 }
 
@@ -203,11 +220,14 @@ export async function saveSheet(
   workbookId: string,
   payload: { sheet: Sheet }
 ): Promise<SheetResponse> {
-  const response = await apiFetch(`${API_BASE_URL}/api/sheet/${workbookId}/save`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/sheet/${workbookId}/save`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
   return parseJson<SheetResponse>(response)
 }
 
@@ -215,11 +235,14 @@ export async function createSheet(
   workbookId: string,
   payload: { name: string }
 ): Promise<SheetResponse> {
-  const response = await apiFetch(`${API_BASE_URL}/api/sheet/${workbookId}/create`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/sheet/${workbookId}/create`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
   return parseJson<SheetResponse>(response)
 }
 
@@ -227,18 +250,26 @@ export async function saveKanbanRegions(
   workbookId: string,
   payload: { kanbanRegions: KanbanRegion[] }
 ): Promise<KanbanRegionsResponse> {
-  const response = await apiFetch(`${API_BASE_URL}/api/sheet/${workbookId}/kanban`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/sheet/${workbookId}/kanban`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
   return parseJson<KanbanRegionsResponse>(response)
 }
 
 export async function resizeSheet(
   workbookId: string,
   payload: { sheet: string; addRows?: number; addCols?: number },
-  window?: { rowStart?: number; rowCount?: number; colStart?: number; colCount?: number }
+  window?: {
+    rowStart?: number
+    rowCount?: number
+    colStart?: number
+    colCount?: number
+  }
 ): Promise<SheetResponse> {
   const params = new URLSearchParams()
   if (window?.rowStart) {
@@ -268,7 +299,12 @@ export async function resizeSheet(
 export async function deleteRows(
   workbookId: string,
   payload: { sheet: string; start: number; count: number },
-  window?: { rowStart?: number; rowCount?: number; colStart?: number; colCount?: number }
+  window?: {
+    rowStart?: number
+    rowCount?: number
+    colStart?: number
+    colCount?: number
+  }
 ): Promise<SheetResponse> {
   const params = new URLSearchParams()
   if (window?.rowStart) {
@@ -297,7 +333,12 @@ export async function deleteRows(
 export async function insertRows(
   workbookId: string,
   payload: { sheet: string; start: number; count: number },
-  window?: { rowStart?: number; rowCount?: number; colStart?: number; colCount?: number }
+  window?: {
+    rowStart?: number
+    rowCount?: number
+    colStart?: number
+    colCount?: number
+  }
 ): Promise<SheetResponse> {
   const params = new URLSearchParams()
   if (window?.rowStart) {
@@ -326,7 +367,12 @@ export async function insertRows(
 export async function deleteCols(
   workbookId: string,
   payload: { sheet: string; start: number; count: number },
-  window?: { rowStart?: number; rowCount?: number; colStart?: number; colCount?: number }
+  window?: {
+    rowStart?: number
+    rowCount?: number
+    colStart?: number
+    colCount?: number
+  }
 ): Promise<SheetResponse> {
   const params = new URLSearchParams()
   if (window?.rowStart) {
@@ -355,7 +401,12 @@ export async function deleteCols(
 export async function insertCols(
   workbookId: string,
   payload: { sheet: string; start: number; count: number },
-  window?: { rowStart?: number; rowCount?: number; colStart?: number; colCount?: number }
+  window?: {
+    rowStart?: number
+    rowCount?: number
+    colStart?: number
+    colCount?: number
+  }
 ): Promise<SheetResponse> {
   const params = new URLSearchParams()
   if (window?.rowStart) {
@@ -385,11 +436,14 @@ export async function renameSheet(
   workbookId: string,
   payload: { oldName: string; newName: string }
 ): Promise<SheetResponse> {
-  const response = await apiFetch(`${API_BASE_URL}/api/sheet/${workbookId}/rename`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/sheet/${workbookId}/rename`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
   return parseJson<SheetResponse>(response)
 }
 
@@ -397,11 +451,14 @@ export async function deleteSheet(
   workbookId: string,
   payload: { name: string }
 ): Promise<SheetResponse> {
-  const response = await apiFetch(`${API_BASE_URL}/api/sheet/${workbookId}/delete`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/sheet/${workbookId}/delete`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
   return parseJson<SheetResponse>(response)
 }
 
@@ -410,7 +467,9 @@ export async function listFiles(): Promise<FilesResponse> {
   return parseJson<FilesResponse>(response)
 }
 
-export async function createWorkbook(payload?: { name?: string }): Promise<UploadResponse> {
+export async function createWorkbook(payload?: {
+  name?: string
+}): Promise<UploadResponse> {
   const response = await apiFetch(`${API_BASE_URL}/api/files`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -420,13 +479,20 @@ export async function createWorkbook(payload?: { name?: string }): Promise<Uploa
 }
 
 export async function listRecentFiles(limit = 10): Promise<FilesResponse> {
-  const response = await apiFetch(`${API_BASE_URL}/api/files/recent?limit=${limit}`)
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/files/recent?limit=${limit}`
+  )
   return parseJson<FilesResponse>(response)
 }
 
 export async function openFile(
   fileId: string,
-  window?: { rowStart?: number; rowCount?: number; colStart?: number; colCount?: number }
+  window?: {
+    rowStart?: number
+    rowCount?: number
+    colStart?: number
+    colCount?: number
+  }
 ): Promise<SheetResponse> {
   const params = new URLSearchParams()
   if (window?.rowStart) {
@@ -469,8 +535,12 @@ export async function removeFile(fileId: string): Promise<{ status: string }> {
   return parseJson<{ status: string }>(response)
 }
 
-export async function fetchFileSettings(fileId: string): Promise<FileSettingsResponse> {
-  const response = await apiFetch(`${API_BASE_URL}/api/files/${fileId}/settings`)
+export async function fetchFileSettings(
+  fileId: string
+): Promise<FileSettingsResponse> {
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/files/${fileId}/settings`
+  )
   return parseJson<FileSettingsResponse>(response)
 }
 
@@ -478,23 +548,72 @@ export async function updateFileSettings(
   fileId: string,
   settings: FileSettings
 ): Promise<FileSettingsResponse> {
-  const response = await apiFetch(`${API_BASE_URL}/api/files/${fileId}/settings`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ settings }),
-  })
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/files/${fileId}/settings`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ settings }),
+    }
+  )
   return parseJson<FileSettingsResponse>(response)
+}
+
+export async function listEmailProfiles(): Promise<EmailProfilesResponse> {
+  const response = await apiFetch(`${API_BASE_URL}/api/email-profiles`)
+  return parseJson<EmailProfilesResponse>(response)
+}
+
+export async function createEmailProfile(
+  profile: EmailProfileInput
+): Promise<EmailProfileResponse> {
+  const response = await apiFetch(`${API_BASE_URL}/api/email-profiles`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile }),
+  })
+  return parseJson<EmailProfileResponse>(response)
+}
+
+export async function updateEmailProfile(
+  profileId: string,
+  profile: EmailProfileInput
+): Promise<EmailProfileResponse> {
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/email-profiles/${profileId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile }),
+    }
+  )
+  return parseJson<EmailProfileResponse>(response)
+}
+
+export async function deleteEmailProfile(
+  profileId: string
+): Promise<{ status: string }> {
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/email-profiles/${profileId}`,
+    {
+      method: "DELETE",
+    }
+  )
+  return parseJson<{ status: string }>(response)
 }
 
 export async function sendFileEmail(
   fileId: string,
   payload: SendEmailRequest
 ): Promise<{ status: string }> {
-  const response = await apiFetch(`${API_BASE_URL}/api/files/${fileId}/email/send`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/files/${fileId}/email/send`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
   return parseJson<{ status: string }>(response)
 }
 
@@ -502,11 +621,14 @@ export async function sendFileTestEmail(
   fileId: string,
   payload: { to: string }
 ): Promise<{ status: string }> {
-  const response = await apiFetch(`${API_BASE_URL}/api/files/${fileId}/email/test`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/files/${fileId}/email/test`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
   return parseJson<{ status: string }>(response)
 }
 
@@ -546,9 +668,10 @@ export async function fetchAuthSession(): Promise<AuthSessionResponse> {
   return parseJson<AuthSessionResponse>(response)
 }
 
-export async function login(
-  payload: { email: string; password: string }
-): Promise<AuthSessionResponse> {
+export async function login(payload: {
+  email: string
+  password: string
+}): Promise<AuthSessionResponse> {
   const response = await apiFetch(
     `${API_BASE_URL}/api/auth/login`,
     {
@@ -561,9 +684,11 @@ export async function login(
   return parseJson<AuthSessionResponse>(response)
 }
 
-export async function signup(
-  payload: { name: string; email: string; password: string }
-): Promise<AuthSessionResponse> {
+export async function signup(payload: {
+  name: string
+  email: string
+  password: string
+}): Promise<AuthSessionResponse> {
   const response = await apiFetch(
     `${API_BASE_URL}/api/auth/signup`,
     {

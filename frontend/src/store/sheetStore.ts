@@ -37,7 +37,6 @@ import type {
   FileSettings,
   FileEntry,
   KanbanRegion,
-  SMTPSettings,
   SelectionTarget,
   Sheet,
   Workbook,
@@ -132,7 +131,7 @@ type SheetState = {
   setSelectedRange: (range: CellRange | null) => void
   setSearch: (value: string) => void
   setFileCurrency: (currency: string) => Promise<void>
-  saveEmailSettings: (email: SMTPSettings) => Promise<void>
+  setFileEmailProfile: (emailProfileId: string) => Promise<void>
   setSheetFontFamily: (fontFamily: string) => void
   setViewportWindow: (window: ViewportWindow) => void
   createKanbanFromSelection: (
@@ -3409,13 +3408,13 @@ export const useSheetStore = create<
     }
   },
 
-  saveEmailSettings: async (email) => {
+  setFileEmailProfile: async (emailProfileId) => {
     const workbookId = get().workbook?.id
     if (!workbookId) {
       return
     }
     const current = get().fileSettings
-    const optimistic: FileSettings = { ...current, email }
+    const optimistic: FileSettings = { ...current, emailProfileId }
     set({ fileSettings: optimistic, error: null })
     try {
       const payload = await updateFileSettings(workbookId, optimistic)
@@ -3426,7 +3425,7 @@ export const useSheetStore = create<
         error:
           error instanceof Error
             ? error.message
-            : "Failed to update email settings",
+            : "Failed to update email profile",
       })
     }
   },

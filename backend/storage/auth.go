@@ -53,6 +53,23 @@ CREATE TABLE IF NOT EXISTS workbook_users (
   FOREIGN KEY (workbook_id) REFERENCES workbooks(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS email_profiles (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  nickname TEXT NOT NULL DEFAULT '',
+  smtp_encrypted TEXT NOT NULL DEFAULT '',
+  smtp_host TEXT NOT NULL DEFAULT '',
+  smtp_port INTEGER NOT NULL DEFAULT 587,
+  smtp_username TEXT NOT NULL DEFAULT '',
+  smtp_password TEXT NOT NULL DEFAULT '',
+  smtp_from_email TEXT NOT NULL DEFAULT '',
+  smtp_from_name TEXT NOT NULL DEFAULT '',
+  smtp_use_tls INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 `
 
 	if _, err := s.db.Exec(schema); err != nil {
@@ -75,6 +92,9 @@ CREATE TABLE IF NOT EXISTS workbook_users (
 	}
 	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_workbook_users_user_id ON workbook_users(user_id);`); err != nil {
 		return fmt.Errorf("create workbook_users user index: %w", err)
+	}
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_email_profiles_user_id ON email_profiles(user_id);`); err != nil {
+		return fmt.Errorf("create email_profiles user index: %w", err)
 	}
 	return nil
 }

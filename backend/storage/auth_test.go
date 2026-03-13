@@ -7,7 +7,7 @@ import (
 )
 
 func TestCreateUserAssignsAdminOnlyToFirstSignup(t *testing.T) {
-	store, err := New(t.TempDir() + "/planar.db")
+	store, err := New(t.TempDir()+"/planar.db", "test-app-encryption-key-1234567890")
 	if err != nil {
 		t.Fatalf("create store: %v", err)
 	}

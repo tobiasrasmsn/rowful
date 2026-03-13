@@ -118,8 +118,8 @@ type SMTPSettings struct {
 }
 
 type FileSettings struct {
-	Currency string       `json:"currency"`
-	Email    SMTPSettings `json:"email"`
+	Currency       string `json:"currency"`
+	EmailProfileID string `json:"emailProfileId"`
 }
 
 type FileSettingsResponse struct {

@@ -52,6 +52,10 @@ set_env_var() {
   fi
 }
 
+generate_secret() {
+  head -c 32 /dev/urandom | base64 | tr -d '\n'
+}
+
 install_docker() {
   if has_cmd docker && docker --version >/dev/null 2>&1; then
     log "Docker already installed."
@@ -192,6 +196,7 @@ if [[ "$HTTP_PORT" != "80" ]]; then
 fi
 
 if [[ ! -f .env ]]; then
+  APP_ENCRYPTION_KEY="$(generate_secret)"
   cat > .env <<ENVEOF
 HTTP_PORT=${HTTP_PORT}
 HTTPS_PORT=${HTTPS_PORT}
@@ -203,6 +208,7 @@ ALLOWED_ORIGINS=${APP_ORIGIN},http://localhost,http://127.0.0.1,http://localhost
 MAX_FILE_SIZE_MB=25
 DB_PATH=/data/rowful.db
 UPLOAD_DIR=/data/uploads
+APP_ENCRYPTION_KEY=${APP_ENCRYPTION_KEY}
 CADDY_ADMIN_URL=http://caddy:2019
 ENVEOF
 else
@@ -216,6 +222,9 @@ else
   set_env_var "MAX_FILE_SIZE_MB" "25"
   set_env_var "DB_PATH" "/data/rowful.db"
   set_env_var "UPLOAD_DIR" "/data/uploads"
+  if ! grep -qE '^APP_ENCRYPTION_KEY=' .env 2>/dev/null; then
+    echo "APP_ENCRYPTION_KEY=$(generate_secret)" >> .env
+  fi
   set_env_var "CADDY_ADMIN_URL" "http://caddy:2019"
 fi
 

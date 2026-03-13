@@ -273,7 +273,8 @@ func (h FilesHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing file id"})
 		return
 	}
-	if _, err := requireWorkbookAccess(r, h.storage, id); err != nil {
+	user, err := requireWorkbookAccess(r, h.storage, id)
+	if err != nil {
 		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "file not found"})
 		return
 	}
@@ -284,10 +285,14 @@ func (h FilesHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := h.storage.UpdateFileSettings(id, req.Settings)
+	settings, err := h.storage.UpdateFileSettings(user.ID, id, req.Settings)
 	if err != nil {
 		if err == storage.ErrNotFound {
 			writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "file not found"})
+			return
+		}
+		if err == storage.ErrInvalid {
+			writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid email profile"})
 			return
 		}
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to update file settings"})

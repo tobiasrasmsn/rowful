@@ -173,7 +173,7 @@ func newTestStore(t *testing.T) *Store {
 	t.Helper()
 
 	dbPath := filepath.Join(t.TempDir(), "rowful-test.db")
-	store, err := New(dbPath)
+	store, err := New(dbPath, "test-app-encryption-key-1234567890")
 	if err != nil {
 		t.Fatalf("create store: %v", err)
 	}

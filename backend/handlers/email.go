@@ -76,7 +76,8 @@ func (h FilesHandler) sendWorkbookEmail(w http.ResponseWriter, r *http.Request, 
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing file id"})
 		return
 	}
-	if _, err := requireWorkbookAccess(r, h.storage, workbookID); err != nil {
+	user, err := requireWorkbookAccess(r, h.storage, workbookID)
+	if err != nil {
 		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "file not found"})
 		return
 	}
@@ -97,7 +98,7 @@ func (h FilesHandler) sendWorkbookEmail(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	settings, err := h.storage.GetFileSettings(workbookID)
+	smtpSettings, err := h.storage.ResolveWorkbookSMTPSettings(user.ID, workbookID)
 	if err != nil {
 		if err == storage.ErrNotFound {
 			writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "file not found"})
@@ -131,7 +132,7 @@ func (h FilesHandler) sendWorkbookEmail(w http.ResponseWriter, r *http.Request, 
 		recipients: recipients,
 		subject:    subject,
 		message:    message,
-		smtp:       settings.Email,
+		smtp:       smtpSettings,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, models.ErrorResponse{Error: err.Error()})

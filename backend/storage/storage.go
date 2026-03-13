@@ -19,7 +19,8 @@ const defaultFileCurrency = "USD"
 const defaultSMTPPort = 587
 
 type Store struct {
-	db *sql.DB
+	db      *sql.DB
+	secrets *secretCodec
 }
 
 type storedCell struct {
@@ -32,7 +33,7 @@ type storedCell struct {
 	style    *models.CellStyle
 }
 
-func New(path string) (*Store, error) {
+func New(path string, appEncryptionKey string) (*Store, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -51,7 +52,13 @@ func New(path string) (*Store, error) {
 		return nil, fmt.Errorf("set busy timeout: %w", err)
 	}
 
-	store := &Store{db: db}
+	secrets, err := newSecretCodec(appEncryptionKey)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+
+	store := &Store{db: db, secrets: secrets}
 	if err := store.migrate(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -100,6 +107,8 @@ CREATE TABLE IF NOT EXISTS sheet_cells (
 CREATE TABLE IF NOT EXISTS file_settings (
   workbook_id TEXT PRIMARY KEY,
   currency TEXT NOT NULL DEFAULT 'USD',
+  email_profile_id TEXT NOT NULL DEFAULT '',
+  smtp_encrypted TEXT NOT NULL DEFAULT '',
   smtp_host TEXT NOT NULL DEFAULT '',
   smtp_port INTEGER NOT NULL DEFAULT 587,
   smtp_username TEXT NOT NULL DEFAULT '',
@@ -142,6 +151,18 @@ CREATE TABLE IF NOT EXISTS managed_domains (
 		return err
 	}
 	if err := s.ensureSheetColumn("max_col", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.ensureFileSettingsColumn("email_profile_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureFileSettingsColumn("smtp_encrypted", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := ensureTableColumn(s.db, "email_profiles", "smtp_encrypted", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.migrateLegacySMTPSecrets(); err != nil {
 		return err
 	}
 
@@ -195,6 +216,10 @@ func (s *Store) ensureWorkbookColumn(name, ddl string) error {
 
 func (s *Store) ensureSheetColumn(name, ddl string) error {
 	return ensureTableColumn(s.db, "sheets", name, ddl)
+}
+
+func (s *Store) ensureFileSettingsColumn(name, ddl string) error {
+	return ensureTableColumn(s.db, "file_settings", name, ddl)
 }
 
 func ensureTableColumn(db *sql.DB, tableName, name, ddl string) error {
@@ -962,20 +987,13 @@ func (s *Store) GetFileSettings(workbookID string) (models.FileSettings, error) 
 	}
 
 	settings := defaultFileSettings()
-	var smtpUseTLS int
 	err = s.db.QueryRow(`
-SELECT currency, smtp_host, smtp_port, smtp_username, smtp_password, smtp_from_email, smtp_from_name, smtp_use_tls
+SELECT currency, email_profile_id
 FROM file_settings
 WHERE workbook_id = ?
 `, workbookID).Scan(
 		&settings.Currency,
-		&settings.Email.Host,
-		&settings.Email.Port,
-		&settings.Email.Username,
-		&settings.Email.Password,
-		&settings.Email.FromEmail,
-		&settings.Email.FromName,
-		&smtpUseTLS,
+		&settings.EmailProfileID,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -984,12 +1002,11 @@ WHERE workbook_id = ?
 		return models.FileSettings{}, fmt.Errorf("load file settings: %w", err)
 	}
 	settings.Currency = normalizeCurrency(settings.Currency)
-	settings.Email = normalizeSMTP(settings.Email)
-	settings.Email.UseTLS = smtpUseTLS == 1
+	settings.EmailProfileID = strings.TrimSpace(settings.EmailProfileID)
 	return settings, nil
 }
 
-func (s *Store) UpdateFileSettings(workbookID string, settings models.FileSettings) (models.FileSettings, error) {
+func (s *Store) UpdateFileSettings(userID, workbookID string, settings models.FileSettings) (models.FileSettings, error) {
 	exists, err := s.workbookExists(workbookID)
 	if err != nil {
 		return models.FileSettings{}, err
@@ -999,8 +1016,16 @@ func (s *Store) UpdateFileSettings(workbookID string, settings models.FileSettin
 	}
 
 	normalized := models.FileSettings{
-		Currency: normalizeCurrency(settings.Currency),
-		Email:    normalizeSMTP(settings.Email),
+		Currency:       normalizeCurrency(settings.Currency),
+		EmailProfileID: strings.TrimSpace(settings.EmailProfileID),
+	}
+	if normalized.EmailProfileID != "" {
+		if _, err := s.GetEmailProfile(userID, normalized.EmailProfileID); err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return models.FileSettings{}, ErrInvalid
+			}
+			return models.FileSettings{}, err
+		}
 	}
 
 	tx, err := s.db.Begin()
@@ -1009,23 +1034,20 @@ func (s *Store) UpdateFileSettings(workbookID string, settings models.FileSettin
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	smtpUseTLS := 0
-	if normalized.Email.UseTLS {
-		smtpUseTLS = 1
+	encryptedSMTP, err := s.encryptSMTPSettings(models.SMTPSettings{
+		Port:   defaultSMTPPort,
+		UseTLS: true,
+	})
+	if err != nil {
+		return models.FileSettings{}, fmt.Errorf("encrypt smtp settings: %w", err)
 	}
 	if _, err := tx.Exec(`
-INSERT INTO file_settings(workbook_id, currency, smtp_host, smtp_port, smtp_username, smtp_password, smtp_from_email, smtp_from_name, smtp_use_tls)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO file_settings(workbook_id, currency, email_profile_id, smtp_encrypted, smtp_host, smtp_port, smtp_username, smtp_password, smtp_from_email, smtp_from_name, smtp_use_tls)
+VALUES(?, ?, ?, ?, '', ?, '', '', '', '', 1)
 ON CONFLICT(workbook_id) DO UPDATE SET
   currency=excluded.currency,
-  smtp_host=excluded.smtp_host,
-  smtp_port=excluded.smtp_port,
-  smtp_username=excluded.smtp_username,
-  smtp_password=excluded.smtp_password,
-  smtp_from_email=excluded.smtp_from_email,
-  smtp_from_name=excluded.smtp_from_name,
-  smtp_use_tls=excluded.smtp_use_tls
-`, workbookID, normalized.Currency, normalized.Email.Host, normalized.Email.Port, normalized.Email.Username, normalized.Email.Password, normalized.Email.FromEmail, normalized.Email.FromName, smtpUseTLS); err != nil {
+  email_profile_id=excluded.email_profile_id
+`, workbookID, normalized.Currency, normalized.EmailProfileID, encryptedSMTP, defaultSMTPPort); err != nil {
 		return models.FileSettings{}, fmt.Errorf("upsert file settings: %w", err)
 	}
 	if err := s.touchWorkbookTx(tx, workbookID); err != nil {
@@ -2129,16 +2151,8 @@ func parseTimeOrNow(value string) time.Time {
 
 func defaultFileSettings() models.FileSettings {
 	return models.FileSettings{
-		Currency: defaultFileCurrency,
-		Email: models.SMTPSettings{
-			Host:      "",
-			Port:      defaultSMTPPort,
-			Username:  "",
-			Password:  "",
-			FromEmail: "",
-			FromName:  "",
-			UseTLS:    true,
-		},
+		Currency:       defaultFileCurrency,
+		EmailProfileID: "",
 	}
 }
 
