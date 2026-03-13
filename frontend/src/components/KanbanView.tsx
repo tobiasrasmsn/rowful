@@ -3,6 +3,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ComponentProps,
   type ReactNode,
 } from "react"
 import {
@@ -18,9 +19,6 @@ import {
   DragOverlay,
   useDraggable,
   useDroppable,
-  type DragEndEvent,
-  type DragMoveEvent,
-  type DragStartEvent,
 } from "@dnd-kit/react"
 import { toast } from "sonner"
 
@@ -76,6 +74,20 @@ type DropColumnData = {
   kind: "column"
   status: string
 }
+
+type DragDropProviderProps = ComponentProps<typeof DragDropProvider>
+type KanbanDragStartEvent = Parameters<
+  NonNullable<DragDropProviderProps["onDragStart"]>
+>[0]
+type KanbanDragMoveEvent = Parameters<
+  NonNullable<DragDropProviderProps["onDragMove"]>
+>[0]
+type KanbanDragOverEvent = Parameters<
+  NonNullable<DragDropProviderProps["onDragOver"]>
+>[0]
+type KanbanDragEndEvent = Parameters<
+  NonNullable<DragDropProviderProps["onDragEnd"]>
+>[0]
 
 const EMPTY_KANBAN_STATUS = ""
 const EMPTY_KANBAN_STATUS_LABEL = "No status"
@@ -525,7 +537,7 @@ export function KanbanView({ region }: KanbanViewProps) {
     []
   )
 
-  const handleDragStart = useCallback((event: DragStartEvent) => {
+  const handleDragStart = useCallback((event: KanbanDragStartEvent) => {
     const sourceData = event.operation.source?.data
     setActiveDropSlot(null)
     setActiveDrag(isDragCardData(sourceData) ? sourceData : null)
@@ -555,27 +567,21 @@ export function KanbanView({ region }: KanbanViewProps) {
   )
 
   const handleDragMove = useCallback(
-    (event: DragMoveEvent) => {
+    (event: KanbanDragMoveEvent) => {
       updateActiveDropSlot(event.operation)
     },
     [updateActiveDropSlot]
   )
 
   const handleDragOver = useCallback(
-    (event: {
-      operation: {
-        source?: { data?: unknown } | null
-        target?: { data?: unknown } | null
-        position: { current: { y: number } }
-      }
-    }) => {
+    (event: KanbanDragOverEvent) => {
       updateActiveDropSlot(event.operation)
     },
     [updateActiveDropSlot]
   )
 
   const handleDragEnd = useCallback(
-    async (event: DragEndEvent) => {
+    async (event: KanbanDragEndEvent) => {
       const sourceData = event.operation.source?.data
       const targetData = event.operation.target?.data
 
