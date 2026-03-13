@@ -142,7 +142,7 @@ export function DomainsPage() {
                 Point your domain at this VPS, then let Caddy take over HTTPS.
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                The flow is gated on DNS. Planar checks the live A and AAAA
+                The flow is gated on DNS. Rowful checks the live A and AAAA
                 records first, and only after they point at this server does it
                 reload Caddy so the domain serves the app and Let&apos;s Encrypt
                 can issue a certificate.
@@ -253,7 +253,7 @@ export function DomainsPage() {
                     Managed Domains
                   </div>
                   <div className="mt-1 text-sm text-muted-foreground">
-                    Active Caddy sites stored by Planar
+                    Active Caddy sites stored by Rowful
                   </div>
                 </div>
                 <Button

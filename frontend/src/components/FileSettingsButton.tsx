@@ -44,7 +44,9 @@ export function FileSettingsButton({ className }: FileSettingsButtonProps) {
   const [open, setOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState("general")
   const [emailDraft, setEmailDraft] = useState(fileSettings.email)
-  const [testRecipient, setTestRecipient] = useState(fileSettings.email.fromEmail)
+  const [testRecipient, setTestRecipient] = useState(
+    fileSettings.email.fromEmail
+  )
   const [isSavingEmail, setIsSavingEmail] = useState(false)
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false)
 
@@ -67,13 +69,13 @@ export function FileSettingsButton({ className }: FileSettingsButtonProps) {
           title="File settings"
           aria-label="File settings"
           className={cn(
-            "h-7 gap-2 rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/35 px-4 py-1 text-sm shadow-none! hover:bg-muted/55",
+            "h-7 gap-2 rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/35 px-3 py-1 text-sm shadow-none! hover:bg-muted/55 md:px-4",
             open && "-mb-px bg-card hover:bg-card",
             className
           )}
         >
           <HugeiconsIcon icon={Settings02Icon} className="size-4" />
-          Settings
+          <span className="hidden md:inline">Settings</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
@@ -97,7 +99,10 @@ export function FileSettingsButton({ className }: FileSettingsButtonProps) {
               <TabsTrigger value="general" className="justify-start text-sm">
                 General
               </TabsTrigger>
-              <TabsTrigger value="communication" className="justify-start text-sm">
+              <TabsTrigger
+                value="communication"
+                className="justify-start text-sm"
+              >
                 Communication
               </TabsTrigger>
             </TabsList>
@@ -162,7 +167,10 @@ export function FileSettingsButton({ className }: FileSettingsButtonProps) {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2 grid gap-1">
-                  <label className="text-xs text-muted-foreground" htmlFor="smtp-host">
+                  <label
+                    className="text-xs text-muted-foreground"
+                    htmlFor="smtp-host"
+                  >
                     SMTP Host
                   </label>
                   <Input
@@ -178,7 +186,10 @@ export function FileSettingsButton({ className }: FileSettingsButtonProps) {
                   />
                 </div>
                 <div className="grid gap-1">
-                  <label className="text-xs text-muted-foreground" htmlFor="smtp-port">
+                  <label
+                    className="text-xs text-muted-foreground"
+                    htmlFor="smtp-port"
+                  >
                     SMTP Port
                   </label>
                   <Input
@@ -207,7 +218,10 @@ export function FileSettingsButton({ className }: FileSettingsButtonProps) {
                       }))
                     }
                   />
-                  <label className="text-xs text-muted-foreground" htmlFor="smtp-use-tls">
+                  <label
+                    className="text-xs text-muted-foreground"
+                    htmlFor="smtp-use-tls"
+                  >
                     Use TLS
                   </label>
                 </div>

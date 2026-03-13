@@ -18,15 +18,11 @@ export function SignupPage() {
 
   return (
     <AuthShell
-      title={
-        bootstrap.setupRequired
-          ? "Create the admin account"
-          : "Request-approved sign up"
-      }
+      title="Create your account"
       description={
         bootstrap.setupRequired
-          ? "The very first account on this instance becomes the administrator and can whitelist future emails."
-          : "New accounts are blocked by default. Only whitelisted email addresses can finish sign-up."
+          ? "Set up the first Planar admin account."
+          : "Create a Planar account to get started."
       }
       alternateLabel="Already have an account?"
       alternateHref="/login"
@@ -65,6 +61,7 @@ export function SignupPage() {
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Planar Admin"
+            className="h-10 rounded-lg focus-within:ring-0!"
           />
         </div>
 
@@ -84,6 +81,7 @@ export function SignupPage() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             placeholder="you@example.com"
+            className="h-10 rounded-lg focus-within:ring-0!"
           />
         </div>
 
@@ -101,17 +99,22 @@ export function SignupPage() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="At least 12 characters"
+            className="h-10 rounded-lg focus-within:ring-0!"
           />
         </div>
 
         {error ? <div className="text-sm text-destructive">{error}</div> : null}
 
-        <Button className="w-full" type="submit" disabled={isSubmitting}>
+        <Button
+          className="h-10 w-full cursor-pointer rounded-lg font-semibold"
+          type="submit"
+          disabled={isSubmitting}
+        >
           {isSubmitting
             ? "Creating account..."
             : bootstrap.setupRequired
               ? "Create admin account"
-              : "Complete sign up"}
+              : "Create account"}
         </Button>
       </form>
     </AuthShell>

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"planar/models"
+	"rowful/models"
 )
 
 func TestUpsertCellPersistsAndRecalculatesSumFormula(t *testing.T) {
@@ -172,7 +172,7 @@ func TestUpsertCellRecalculatesConditionalFormulaOnSourceUpdate(t *testing.T) {
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 
-	dbPath := filepath.Join(t.TempDir(), "planar-test.db")
+	dbPath := filepath.Join(t.TempDir(), "rowful-test.db")
 	store, err := New(dbPath)
 	if err != nil {
 		t.Fatalf("create store: %v", err)

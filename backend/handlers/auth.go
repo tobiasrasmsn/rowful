@@ -16,12 +16,12 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"planar/models"
-	"planar/storage"
+	"rowful/models"
+	"rowful/storage"
 )
 
 const (
-	sessionCookieName     = "planar_session"
+	sessionCookieName     = "rowful_session"
 	sessionLifetime       = 30 * 24 * time.Hour
 	minimumPasswordLength = 12
 	maximumPasswordBytes  = 72
@@ -133,8 +133,6 @@ func (h AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		switch err {
 		case storage.ErrConflict:
 			writeJSON(w, http.StatusConflict, models.ErrorResponse{Error: "an account with that email already exists"})
-		case storage.ErrForbidden:
-			writeJSON(w, http.StatusForbidden, models.ErrorResponse{Error: "sign ups are closed; ask the admin to whitelist your email"})
 		default:
 			writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to create account"})
 		}

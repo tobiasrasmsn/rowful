@@ -11,7 +11,6 @@ import {
 } from "react-router-dom"
 import { toast } from "sonner"
 
-import { AdminAccessPage } from "@/components/AdminAccessPage"
 import { CellInspector } from "@/components/CellInspector"
 import { DomainsPage } from "@/components/DomainsPage"
 import { FileTabsBar } from "@/components/FileTabsBar"
@@ -30,7 +29,7 @@ function LoadingScreen() {
   return (
     <div className="loading-screen-surface flex min-h-svh items-center justify-center">
       <div className="rounded-full border border-border bg-card px-4 py-2 text-sm text-muted-foreground shadow-md shadow-primary/10">
-        Loading Planar...
+        Loading Rowful...
       </div>
     </div>
   )
@@ -66,15 +65,19 @@ function SheetWorkspace() {
     <>
       <div className="flex min-w-0 flex-col gap-1 px-2">
         <div className="flex min-w-0 items-center gap-4">
-          <FileTabsBar compact className="min-w-0 flex-1" showLoadingStrip={false} />
+          <FileTabsBar
+            compact
+            className="min-w-0 flex-1"
+            showLoadingStrip={false}
+          />
           <UserActionsPopover className="shrink-0" />
         </div>
         <div className="flex min-w-0 items-end">
           <SheetTabs compact className="min-w-0 flex-1" />
         </div>
       </div>
-      <div className="min-h-0 flex-1 p-2 pt-0">
-        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="min-h-0 flex-1 pt-0 md:p-2 md:pt-0">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden border-t border-border bg-card md:rounded-2xl md:border">
           {activeKanban ? null : <CellInspector />}
 
           <div className="min-h-0 flex-1">
@@ -325,7 +328,6 @@ export function App() {
             <Route path="/sheet/:id" element={<SheetRoutePage />} />
             <Route element={<RequireAdmin />}>
               <Route path="/domains" element={<DomainsPage />} />
-              <Route path="/admin/access" element={<AdminAccessPage />} />
             </Route>
           </Route>
         </Route>

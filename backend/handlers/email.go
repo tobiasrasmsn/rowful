@@ -21,8 +21,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"planar/models"
-	"planar/storage"
+	"rowful/models"
+	"rowful/storage"
 )
 
 type sendEmailRequest struct {
@@ -111,10 +111,10 @@ func (h FilesHandler) sendWorkbookEmail(w http.ResponseWriter, r *http.Request, 
 	message := req.Message
 	if testMode {
 		if subject == "" {
-			subject = "Planar SMTP test"
+			subject = "Rowful SMTP test"
 		}
 		if strings.TrimSpace(message) == "" {
-			message = "This is a test email from Planar."
+			message = "This is a test email from Rowful."
 		}
 	}
 
@@ -423,7 +423,7 @@ func buildEmailMessage(fromName, fromEmail, to, subject, body string) []byte {
 	normalizedBody = strings.ReplaceAll(normalizedBody, "\r", "\n")
 	normalizedBody = strings.ReplaceAll(normalizedBody, "\n", "\r\n")
 	htmlBody := strings.ReplaceAll(html.EscapeString(strings.ReplaceAll(normalizedBody, "\r\n", "\n")), "\n", "<br>\n")
-	boundary := "planar-mixed-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	boundary := "rowful-mixed-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 
 	headers := []string{
 		"From: " + from,

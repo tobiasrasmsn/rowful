@@ -9,9 +9,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"planar/cache"
-	"planar/models"
-	"planar/storage"
+	"rowful/cache"
+	"rowful/models"
+	"rowful/storage"
 )
 
 const (

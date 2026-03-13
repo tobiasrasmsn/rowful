@@ -21,8 +21,8 @@ export function LoginPage() {
 
   return (
     <AuthShell
-      title="Sign in"
-      description="Use the account hosted on this Planar instance. Sessions stay server-side in a secure HttpOnly cookie."
+      title="Welcome back!"
+      description="Please sign in to continue."
       alternateLabel="Need an account?"
       alternateHref="/signup"
       alternateText="Sign up"
@@ -63,6 +63,7 @@ export function LoginPage() {
             autoCorrect="off"
             spellCheck={false}
             value={email}
+            className="h-10 rounded-lg focus-within:ring-0!"
             onChange={(event) => setEmail(event.target.value)}
             placeholder="you@example.com"
           />
@@ -82,35 +83,20 @@ export function LoginPage() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="Enter your password"
+            className="h-10 rounded-lg focus-within:ring-0!"
           />
         </div>
 
         {error ? <div className="text-sm text-destructive">{error}</div> : null}
 
-        <Button className="w-full" type="submit" disabled={isSubmitting}>
+        <Button
+          className="h-10 w-full cursor-pointer rounded-lg font-semibold"
+          type="submit"
+          disabled={isSubmitting}
+        >
           {isSubmitting ? "Signing in..." : "Sign in"}
         </Button>
       </form>
-
-      <div className="mt-6 rounded-2xl border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-        {bootstrap.setupRequired ? (
-          <>
-            No account exists yet. The first sign-up becomes the instance admin.{" "}
-            <Link
-              className="font-medium text-primary hover:text-primary/80"
-              to="/signup"
-            >
-              Create it here
-            </Link>
-            .
-          </>
-        ) : (
-          <>
-            Sign-ups are invite-only after bootstrap. If you do not have access
-            yet, ask the admin to whitelist your email.
-          </>
-        )}
-      </div>
     </AuthShell>
   )
 }

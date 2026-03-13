@@ -12,7 +12,7 @@
   --card-foreground: oklch(0.225 0.01 95.1);
   --popover: oklch(1 0.001 95.1);
   --popover-foreground: oklch(0.225 0.01 95.1);
-  --primary: oklch(0.39 0.09 244.6);
+  --primary: oklch(54.6% 0.245 262.881);
   --primary-foreground: oklch(0.985 0.001 95.1);
   --secondary: oklch(0.94 0.008 95.1);
   --secondary-foreground: oklch(0.24 0.01 95.1);
@@ -57,7 +57,7 @@
   --card-foreground: oklch(0.96 0.004 95.1);
   --popover: oklch(0.25 0.013 264.5);
   --popover-foreground: oklch(0.96 0.004 95.1);
-  --primary: oklch(0.72 0.11 244.6);
+  --primary: oklch(97% 0 0);
   --primary-foreground: oklch(0.205 0.012 264.5);
   --secondary: oklch(0.305 0.012 264.5);
   --secondary-foreground: oklch(0.94 0.004 95.1);
@@ -241,7 +241,7 @@
 .sheet-grid .rgCell,
 .sheet-grid .rgHeaderCell {
   font-family: var(
-    --planar-grid-font-family,
+    --rowful-grid-font-family,
     Calibri,
     "Segoe UI",
     Arial,
@@ -264,11 +264,11 @@
   --revo-grid-text: var(--color-foreground);
   border: 0;
   color: var(--color-foreground);
-  font-size: var(--planar-grid-font-size, 12px);
+  font-size: var(--rowful-grid-font-size, 12px);
 }
 
 .sheet-grid revo-grid[theme="compact"] revogr-data .rgRow {
-  line-height: var(--planar-grid-row-height, 28px);
+  line-height: var(--rowful-grid-row-height, 28px);
 }
 
 .sheet-grid revo-grid[theme="compact"] revogr-header {

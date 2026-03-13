@@ -1,4 +1,4 @@
-const LAST_OPENED_SHEETS_KEY = "planar:last-opened-sheets"
+const LAST_OPENED_SHEETS_KEY = "rowful:last-opened-sheets"
 
 const readMap = (): Record<string, string> => {
   if (typeof window === "undefined") {
@@ -46,7 +46,10 @@ export const getLastOpenedSheetForFile = (fileID: string): string | null => {
   return map[fileID] ?? null
 }
 
-export const setLastOpenedSheetForFile = (fileID: string, sheetName: string) => {
+export const setLastOpenedSheetForFile = (
+  fileID: string,
+  sheetName: string
+) => {
   if (!fileID || !sheetName) {
     return
   }

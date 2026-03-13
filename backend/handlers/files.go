@@ -14,10 +14,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/xuri/excelize/v2"
 
-	"planar/cache"
-	"planar/models"
-	"planar/parser"
-	"planar/storage"
+	"rowful/cache"
+	"rowful/models"
+	"rowful/parser"
+	"rowful/storage"
 )
 
 type FilesHandler struct {

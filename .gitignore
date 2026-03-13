@@ -35,16 +35,16 @@ frontend/.vite/
 
 # Go/backend artifacts
 backend/.gocache/
-backend/planar
+backend/rowful
 backend/coverage.out
 backend/*.test
 
 # Runtime/app data (should stay on server/local only)
 data/
 backend/uploads/
-backend/planar.db
-backend/planar.db-shm
-backend/planar.db-wal
+backend/rowful.db
+backend/rowful.db-shm
+backend/rowful.db-wal
 
 # Docker/local overrides
 docker-compose.override.yml

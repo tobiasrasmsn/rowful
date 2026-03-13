@@ -8,7 +8,7 @@ import (
 
 	"github.com/xuri/excelize/v2"
 
-	"planar/models"
+	"rowful/models"
 )
 
 func ParseWorkbook(fileBytes []byte) (map[string]models.Sheet, error) {

@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"planar/config"
-	"planar/models"
-	"planar/storage"
+	"rowful/config"
+	"rowful/models"
+	"rowful/storage"
 )
 
 var domainPattern = regexp.MustCompile(`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`)
@@ -212,7 +212,7 @@ func (h DomainsHandler) syncCaddyConfig() error {
 		return fmt.Errorf("failed to prepare caddy sites directory: %w", err)
 	}
 
-	dynamicConfigPath := filepath.Join(h.cfg.CaddySitesPath, "planar-domains.caddy")
+	dynamicConfigPath := filepath.Join(h.cfg.CaddySitesPath, "rowful-domains.caddy")
 	if err := os.WriteFile(dynamicConfigPath, []byte(renderManagedDomainsCaddyfile(domains)), 0o644); err != nil {
 		return fmt.Errorf("failed to write caddy domain config: %w", err)
 	}
@@ -275,7 +275,7 @@ func (h DomainsHandler) syncCaddyConfig() error {
 
 func renderManagedDomainsCaddyfile(domains []models.ManagedDomain) string {
 	var builder strings.Builder
-	builder.WriteString("# Managed by Planar.\n")
+	builder.WriteString("# Managed by Rowful.\n")
 	for _, domain := range domains {
 		builder.WriteString(domain.Domain)
 		builder.WriteString(" {\n")

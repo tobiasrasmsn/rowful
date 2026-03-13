@@ -188,7 +188,7 @@ const CACHE_ROW_PADDING = 800
 const CACHE_COL_PADDING = 24
 const MAX_HISTORY_RANGE_AREA = 4096
 const CELL_UPDATE_BATCH_CONCURRENCY = 4
-const SHEET_FONT_FAMILIES_STORAGE_KEY = "planar:sheet-font-families:v1"
+const SHEET_FONT_FAMILIES_STORAGE_KEY = "rowful:sheet-font-families:v1"
 const DEFAULT_SHEET_FONT_FAMILY = "Calibri"
 let clearValuesInFlight = false
 let refreshFilesDebounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -2090,7 +2090,7 @@ export const useSheetStore = create<
       error:
         attemptError instanceof Error
           ? attemptError.message
-        : "Failed to persist cell change",
+          : "Failed to persist cell change",
     })
   },
 
@@ -2127,17 +2127,16 @@ export const useSheetStore = create<
         return
       }
 
-      const selectedValue = formula
-        ? (existingCell?.value ?? "")
-        : update.value
-      optimistic = upsertCellLocal(optimistic, update.row, update.col, {
-        value: selectedValue,
-        display: formula
-          ? (existingCell?.display ?? existingCell?.value ?? "")
-          : update.value,
-        formula: formula ?? "",
-        type: formula ? "formula" : update.value.trim() ? "string" : "blank",
-      }) ?? optimistic
+      const selectedValue = formula ? (existingCell?.value ?? "") : update.value
+      optimistic =
+        upsertCellLocal(optimistic, update.row, update.col, {
+          value: selectedValue,
+          display: formula
+            ? (existingCell?.display ?? existingCell?.value ?? "")
+            : update.value,
+          formula: formula ?? "",
+          type: formula ? "formula" : update.value.trim() ? "string" : "blank",
+        }) ?? optimistic
       preparedUpdates.push({
         ...update,
         formula,
@@ -2181,28 +2180,26 @@ export const useSheetStore = create<
 
     const failures: unknown[] = []
     await runTaskBatch(
-      preparedUpdates.map(
-        (update) => async () => {
-          let attemptError: unknown = null
-          for (let attempt = 0; attempt < 2; attempt += 1) {
-            try {
-              await updateCellRequest(workbook.id, {
-                sheet: sheet.name,
-                row: update.row,
-                col: update.col,
-                value: update.value,
-              })
-              return
-            } catch (error) {
-              attemptError = error
-              if (attempt < 1) {
-                await sleep(120)
-              }
+      preparedUpdates.map((update) => async () => {
+        let attemptError: unknown = null
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            await updateCellRequest(workbook.id, {
+              sheet: sheet.name,
+              row: update.row,
+              col: update.col,
+              value: update.value,
+            })
+            return
+          } catch (error) {
+            attemptError = error
+            if (attempt < 1) {
+              await sleep(120)
             }
           }
-          failures.push(attemptError)
         }
-      )
+        failures.push(attemptError)
+      })
     )
 
     let verifiedSheet: Sheet | null = null
@@ -2232,9 +2229,8 @@ export const useSheetStore = create<
         return
       }
 
-      const verificationWindow = buildCellUpdateVerificationWindow(
-        preparedUpdates
-      )
+      const verificationWindow =
+        buildCellUpdateVerificationWindow(preparedUpdates)
       if (verificationWindow) {
         try {
           const verificationPayload = await fetchSheetWindow(workbook.id, {

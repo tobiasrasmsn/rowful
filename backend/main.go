@@ -10,10 +10,10 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
-	"planar/cache"
-	"planar/config"
-	"planar/handlers"
-	"planar/storage"
+	"rowful/cache"
+	"rowful/config"
+	"rowful/handlers"
+	"rowful/storage"
 )
 
 func main() {
@@ -110,7 +110,7 @@ func main() {
 		IdleTimeout:  cfg.IdleTimeout,
 	}
 
-	log.Printf("Planar backend running on %s", server.Addr)
+	log.Printf("Rowful backend running on %s", server.Addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(fmt.Errorf("server failed: %w", err))
 	}

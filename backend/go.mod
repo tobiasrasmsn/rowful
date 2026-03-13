@@ -1,4 +1,4 @@
-module planar
+module rowful
 
 go 1.25.7
 

@@ -11,7 +11,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"planar/models"
+	"rowful/models"
 )
 
 const maxCreateRangeArea = 4096

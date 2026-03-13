@@ -27,7 +27,7 @@ type AuthState = {
 
 const GUEST_BOOTSTRAP: AuthBootstrap = {
   setupRequired: false,
-  inviteOnly: true,
+  inviteOnly: false,
 }
 
 function applyGuestState() {

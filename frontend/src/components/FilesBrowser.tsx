@@ -13,6 +13,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { FileSpreadsheetIcon } from "@hugeicons/core-free-icons"
 
 const formatDate = (value: string) => {
   const date = new Date(value)
@@ -94,7 +96,7 @@ export function FilesBrowser() {
 
   return (
     <div className="min-h-0 flex-1 p-2">
-      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
+      <div className="border-borde flex h-full min-h-0 flex-col overflow-hidden rounded-xl border">
         <input
           ref={inputRef}
           type="file"
@@ -104,9 +106,14 @@ export function FilesBrowser() {
         />
 
         <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-          <div className="text-sm font-medium">Files</div>
+          <div className="text-base font-medium">Workbooks</div>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={onCreateClick} disabled={isCreating}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onCreateClick}
+              disabled={isCreating}
+            >
               {isCreating ? "Creating..." : "New File"}
             </Button>
             <Button size="sm" onClick={onImportClick} disabled={isImporting}>
@@ -116,28 +123,38 @@ export function FilesBrowser() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead className="bg-muted/40 text-left">
+          <table className="w-full text-sm">
+            <thead className="border-b text-left">
               <tr>
                 <th className="px-4 py-2 font-medium">Name</th>
                 <th className="px-4 py-2 font-medium">Last Opened</th>
                 <th className="px-4 py-2 font-medium">Updated</th>
-                <th className="px-4 py-2 font-medium text-right">Actions</th>
+                <th className="px-4 py-2 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
               {files.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-8 text-center text-muted-foreground" colSpan={4}>
+                  <td
+                    className="px-4 py-8 text-center text-muted-foreground"
+                    colSpan={4}
+                  >
                     No uploaded files yet
                   </td>
                 </tr>
               ) : (
                 files.map((file) => (
                   <tr key={file.id} className="border-t border-border">
-                    <td className="px-4 py-2">{getDisplayFileName(file.fileName)}</td>
-                    <td className="px-4 py-2">{formatDate(file.lastOpenedAt)}</td>
-                    <td className="px-4 py-2">{formatDate(file.updatedAt)}</td>
+                    <td className="flex items-center gap-2 px-4 py-2 text-base">
+                      <HugeiconsIcon icon={FileSpreadsheetIcon} size={18} />
+                      {getDisplayFileName(file.fileName)}
+                    </td>
+                    <td className="px-4 py-2 text-sm text-muted-foreground">
+                      {formatDate(file.lastOpenedAt)}
+                    </td>
+                    <td className="px-4 py-2 text-sm text-muted-foreground">
+                      {formatDate(file.updatedAt)}
+                    </td>
                     <td className="px-4 py-2">
                       <div className="flex justify-end gap-2">
                         <Button
@@ -185,7 +202,11 @@ export function FilesBrowser() {
             placeholder="Untitled"
           />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCreateOpen(false)}
+            >
               Cancel
             </Button>
             <Button
@@ -228,7 +249,11 @@ export function FilesBrowser() {
             placeholder="File name"
           />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setRenameOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRenameOpen(false)}
+            >
               Cancel
             </Button>
             <Button
@@ -262,7 +287,11 @@ export function FilesBrowser() {
             {activeFile ? getDisplayFileName(activeFile.fileName) : ""}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteOpen(false)}
+            >
               Cancel
             </Button>
             <Button

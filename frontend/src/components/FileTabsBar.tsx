@@ -2,6 +2,8 @@ import { cn } from "@/lib/utils"
 import { getDisplayFileName } from "@/lib/fileName"
 import { useSheetStore } from "@/store/sheetStore"
 import { useLocation } from "react-router-dom"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { FileSpreadsheetIcon } from "@hugeicons/core-free-icons"
 
 type FileTabsBarProps = {
   className?: string
@@ -9,7 +11,7 @@ type FileTabsBarProps = {
   showLoadingStrip?: boolean
 }
 
-const APP_NAME = "Planar"
+const APP_NAME = "Rowful"
 
 export function FileTabsBar({
   className,
@@ -26,7 +28,14 @@ export function FileTabsBar({
   return (
     <div className={cn(compact ? "px-0 py-0" : "px-2 py-2", className)}>
       <div className="flex min-w-0 items-center gap-2 px-3 py-2 text-sm text-foreground/90">
-        <span className="block w-fit truncate text-lg font-medium">
+        {title === "Rowful" ? (
+          <img src="/logo.png" alt="Rowful Logo" className="size-6" />
+        ) : (
+          <HugeiconsIcon icon={FileSpreadsheetIcon} size={18} />
+        )}
+        <span
+          className={`font-medium ${title === "Rowful" ? "text-xl" : "block w-fit truncate text-lg"}`}
+        >
           {title}
         </span>
       </div>

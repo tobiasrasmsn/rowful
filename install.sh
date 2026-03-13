@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="https://github.com/tobiasrasmsn/planar.git"
+REPO_URL="https://github.com/tobiasrasmsn/rowful.git"
 REPO_BRANCH="main"
-INSTALL_DIR="${PLANAR_INSTALL_DIR:-/opt/planar}"
+INSTALL_DIR="${PLANAR_INSTALL_DIR:-/opt/rowful}"
 
 if ! command -v apt-get >/dev/null 2>&1; then
   echo "Error: This installer supports Ubuntu/Debian systems with apt-get."
@@ -139,7 +139,7 @@ prepare_caddy_dirs() {
   local caddy_dir="${INSTALL_DIR}/caddy"
   log "Preparing Caddy runtime directories at ${caddy_dir}..."
   $SUDO mkdir -p "${caddy_dir}/sites" "${caddy_dir}/data" "${caddy_dir}/config"
-  $SUDO touch "${caddy_dir}/sites/planar-domains.caddy"
+  $SUDO touch "${caddy_dir}/sites/rowful-domains.caddy"
   $SUDO chown -R 65532:65532 "${caddy_dir}"
   $SUDO chmod -R u+rwX "${caddy_dir}"
 }
@@ -201,7 +201,7 @@ VITE_API_BASE_URL=
 PUBLIC_IPS=${PUBLIC_IP}
 ALLOWED_ORIGINS=${APP_ORIGIN},http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173
 MAX_FILE_SIZE_MB=25
-DB_PATH=/data/planar.db
+DB_PATH=/data/rowful.db
 UPLOAD_DIR=/data/uploads
 CADDY_ADMIN_URL=http://caddy:2019
 ENVEOF
@@ -214,7 +214,7 @@ else
   set_env_var "PUBLIC_IPS" "${PUBLIC_IP}"
   set_env_var "ALLOWED_ORIGINS" "${APP_ORIGIN},http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173"
   set_env_var "MAX_FILE_SIZE_MB" "25"
-  set_env_var "DB_PATH" "/data/planar.db"
+  set_env_var "DB_PATH" "/data/rowful.db"
   set_env_var "UPLOAD_DIR" "/data/uploads"
   set_env_var "CADDY_ADMIN_URL" "http://caddy:2019"
 fi

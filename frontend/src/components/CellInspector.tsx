@@ -13,7 +13,7 @@ import { useSheetStore } from "@/store/sheetStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-const GRID_NAVIGATE_TO_CELL_EVENT = "planar:navigate-to-cell"
+const GRID_NAVIGATE_TO_CELL_EVENT = "rowful:navigate-to-cell"
 
 const toColumnLabel = (index: number) => {
   let label = ""
@@ -109,7 +109,8 @@ export function CellInspector() {
     selectedRange &&
     (selectedRange.rowStart !== selectedRange.rowEnd ||
       selectedRange.colStart !== selectedRange.colEnd)
-  const isSingleCellSelection = selectionMode === "cell" && !isMultiCellSelection
+  const isSingleCellSelection =
+    selectionMode === "cell" && !isMultiCellSelection
   const editableCellValue = useMemo(() => {
     if (!isSingleCellSelection) {
       return ""
@@ -258,7 +259,9 @@ export function CellInspector() {
         value={isSingleCellSelection ? draftValue : formulaValue}
         readOnly={!isSingleCellSelection}
         onChange={
-          isSingleCellSelection ? (event) => setDraftValue(event.target.value) : undefined
+          isSingleCellSelection
+            ? (event) => setDraftValue(event.target.value)
+            : undefined
         }
         onKeyDown={isSingleCellSelection ? handleInspectorKeyDown : undefined}
         className="min-w-0 flex-1 rounded-none border-y-0 border-r-0 border-l bg-transparent font-mono focus-visible:ring-0 focus-visible:outline-0"

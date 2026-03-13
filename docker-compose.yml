@@ -7,7 +7,7 @@ services:
       PORT: ${BACKEND_PORT:-8080}
       MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-25}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost}
-      DB_PATH: ${DB_PATH:-/data/planar.db}
+      DB_PATH: ${DB_PATH:-/data/rowful.db}
       UPLOAD_DIR: ${UPLOAD_DIR:-/data/uploads}
       PUBLIC_IPS: ${PUBLIC_IPS:-}
       CADDY_ADMIN_URL: ${CADDY_ADMIN_URL:-http://caddy:2019}

@@ -22,7 +22,10 @@ import { sendFileEmail } from "@/api/client"
 import { renderCellDisplayValue } from "@/lib/cellFormat"
 import { useSheetStore } from "@/store/sheetStore"
 import type { Cell, KanbanRegion, Sheet } from "@/types/sheet"
-import { CellFormattingContextMenu } from "@/components/CellFormattingContextMenu"
+import {
+  CellFormattingContextMenu,
+  CellFormattingPanel,
+} from "@/components/CellFormattingContextMenu"
 import { Button } from "@/components/ui/button"
 import {
   ContextMenu,
@@ -40,6 +43,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 
 defineCustomElements()
 
@@ -106,6 +110,11 @@ type CellCoords = {
   row: number
   col: number
 }
+type FormattingAnchorTarget =
+  | { kind: "cell" | "range"; row: number; col: number }
+  | { kind: "row"; row: number }
+  | { kind: "column"; col: number }
+  | { kind: "sheet" }
 type ClipboardCellPayload = {
   value: string
   formula: string
@@ -149,8 +158,8 @@ const GRID_CELL_HORIZONTAL_PADDING_PX = 16
 const MAX_COLUMN_WIDTH =
   CELL_PREVIEW_CHAR_LIMIT * PREVIEW_CHAR_WIDTH_PX +
   GRID_CELL_HORIZONTAL_PADDING_PX
-const COLUMN_WIDTHS_STORAGE_KEY = "planar:column-widths:v1"
-const GRID_NAVIGATE_TO_CELL_EVENT = "planar:navigate-to-cell"
+const COLUMN_WIDTHS_STORAGE_KEY = "rowful:column-widths:v1"
+const GRID_NAVIGATE_TO_CELL_EVENT = "rowful:navigate-to-cell"
 const VISIBLE_ROW_OVERSCAN = 150
 const VISIBLE_COL_OVERSCAN = 12
 const FETCH_ROW_BLOCK = 400
@@ -158,6 +167,8 @@ const FETCH_COL_BLOCK = 32
 const CELL_UPDATE_BATCH_CONCURRENCY = 12
 const MIN_GRID_ROWS = 1000
 const DEFAULT_KANBAN_STATUS = "Unassigned"
+const FORMATTING_MENU_SHORTCUT_KEY = "f"
+const FALLBACK_FORMATTING_MENU_SHORTCUT_LABEL = "Ctrl/Cmd+Shift+F"
 
 const toColumnLabel = (index: number) => {
   let label = ""
@@ -722,6 +733,32 @@ const getRowHeaderIndexFromTarget = (target: Element) => {
   return rowIndex
 }
 
+const getColumnHeaderCell = (container: Element, col: number) =>
+  container.querySelector<HTMLElement>(
+    `revogr-header .rgHeaderCell[data-rgCol="${col - 1}"]`
+  )
+
+const getRowHeaderCell = (container: Element, row: number) =>
+  container.querySelector<HTMLElement>(
+    `.rowHeaders .rgCell[data-rgRow="${row - 1}"]`
+  )
+
+const getBodyCell = (container: Element, row: number, col: number) =>
+  container.querySelector<HTMLElement>(
+    `.rgCell[data-rgRow="${row - 1}"][data-rgCol="${col - 1}"]`
+  )
+
+const getFirstVisibleBodyCellInRow = (container: Element, row: number) =>
+  container.querySelector<HTMLElement>(`.rgCell[data-rgRow="${row - 1}"]`)
+
+const getFirstVisibleBodyCellInColumn = (container: Element, col: number) =>
+  container.querySelector<HTMLElement>(`.rgCell[data-rgCol="${col - 1}"]`)
+
+const getSheetCornerHeaderCell = (container: Element) =>
+  container.querySelector<HTMLElement>(
+    ".rowHeaders revogr-header .rgHeaderCell"
+  )
+
 const parseClipboardText = (text: string) => {
   const lines = text.replace(/\r\n/g, "\n").split("\n")
   if (lines.length > 1 && lines[lines.length - 1] === "") {
@@ -1070,6 +1107,13 @@ export function Grid() {
   const [menuContext, setMenuContext] = useState<GridContextMenuContext | null>(
     null
   )
+  const [formattingPopoverOpen, setFormattingPopoverOpen] = useState(false)
+  const [formattingPopoverAnchor, setFormattingPopoverAnchor] = useState<{
+    left: number
+    top: number
+    width: number
+    height: number
+  } | null>(null)
   const clipboardRef = useRef<{
     plainText: string
     payload: ClipboardPayload
@@ -1104,7 +1148,7 @@ export function Grid() {
     []
   )
   const [sendEmailSubject, setSendEmailSubject] = useState(
-    "Message from Planar"
+    "Message from Rowful"
   )
   const [sendEmailMessage, setSendEmailMessage] = useState("")
   const [isSendingEmail, setIsSendingEmail] = useState(false)
@@ -1158,6 +1202,35 @@ export function Grid() {
       colEnd: selectedCol,
     }
   }, [selectedCol, selectedRange, selectedRow])
+
+  const getFormattingAnchorTarget = useCallback((): FormattingAnchorTarget => {
+    if (selectedRange) {
+      return {
+        kind: "range",
+        row: selectedRange.rowStart,
+        col: selectedRange.colStart,
+      }
+    }
+    if (selectionMode === "row") {
+      return { kind: "row", row: selectedRow }
+    }
+    if (selectionMode === "column") {
+      return { kind: "column", col: selectedCol }
+    }
+    if (selectionMode === "sheet") {
+      return { kind: "sheet" }
+    }
+    return { kind: "cell", row: selectedRow, col: selectedCol }
+  }, [selectedCol, selectedRange, selectedRow, selectionMode])
+
+  const formattingShortcutLabel = useMemo(() => {
+    if (typeof navigator === "undefined") {
+      return FALLBACK_FORMATTING_MENU_SHORTCUT_LABEL
+    }
+    return /Mac|iPhone|iPad/.test(navigator.platform)
+      ? "Cmd+Shift+F"
+      : "Ctrl+Shift+F"
+  }, [])
 
   const setDropPreview = useCallback(
     (
@@ -1386,6 +1459,97 @@ export function Grid() {
     )
   }, [clearSelectedValues, commitGridCellValue, getSelectionBounds])
 
+  const openFormattingPopoverAtSelection = useCallback(async () => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const container = gridContainerRef.current
+    if (!container) {
+      return
+    }
+
+    const anchorTarget = getFormattingAnchorTarget()
+    const grid = gridRef.current
+
+    if (anchorTarget.kind === "cell" || anchorTarget.kind === "range") {
+      await grid?.scrollToCoordinate?.({
+        x: anchorTarget.col - 1,
+        y: anchorTarget.row - 1,
+      })
+    } else if (anchorTarget.kind === "row") {
+      await grid?.scrollToRow?.(anchorTarget.row - 1)
+    } else if (anchorTarget.kind === "column") {
+      await grid?.scrollToColumnIndex?.(anchorTarget.col - 1)
+    }
+
+    const resolveAnchorElement = (element: HTMLElement) => {
+      switch (anchorTarget.kind) {
+        case "cell":
+        case "range":
+          return (
+            getBodyCell(element, anchorTarget.row, anchorTarget.col) ??
+            getColumnHeaderCell(element, anchorTarget.col) ??
+            getRowHeaderCell(element, anchorTarget.row)
+          )
+        case "row":
+          return (
+            getRowHeaderCell(element, anchorTarget.row) ??
+            getFirstVisibleBodyCellInRow(element, anchorTarget.row)
+          )
+        case "column":
+          return (
+            getColumnHeaderCell(element, anchorTarget.col) ??
+            getFirstVisibleBodyCellInColumn(element, anchorTarget.col)
+          )
+        case "sheet":
+          return getSheetCornerHeaderCell(element)
+      }
+    }
+
+    const setAnchorFromRect = (latestContainer: HTMLElement, rect: DOMRect) => {
+      const containerRect = latestContainer.getBoundingClientRect()
+      setFormattingPopoverAnchor({
+        left: Math.max(0, rect.left - containerRect.left),
+        top: Math.max(0, rect.top - containerRect.top),
+        width: Math.max(1, rect.width),
+        height: Math.max(1, rect.height),
+      })
+      setFormattingPopoverOpen(true)
+    }
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => resolve())
+      })
+      const latestContainer = gridContainerRef.current
+      if (!latestContainer) {
+        return
+      }
+      const target = resolveAnchorElement(latestContainer)
+      if (target) {
+        setAnchorFromRect(latestContainer, target.getBoundingClientRect())
+        return
+      }
+    }
+
+    const latestContainer = gridContainerRef.current
+    if (!latestContainer) {
+      return
+    }
+    const containerRect = latestContainer.getBoundingClientRect()
+    setAnchorFromRect(
+      latestContainer,
+      new DOMRect(
+        containerRect.left + containerRect.width / 2,
+        containerRect.top +
+          Math.min(56, Math.max(24, containerRect.height / 4)),
+        1,
+        1
+      )
+    )
+  }, [getFormattingAnchorTarget])
+
   const beginFormulaSelection = useCallback(
     (row: number, col: number) => {
       const cell = preparedGridDataRef.current?.cellMatrix.get(row)?.get(col)
@@ -1415,7 +1579,7 @@ export function Grid() {
   const gridEditors = useMemo(
     () =>
       ({
-        "planar-status-editor": statusCellEditor,
+        "rowful-status-editor": statusCellEditor,
       }) satisfies Editors,
     [statusCellEditor]
   )
@@ -1879,6 +2043,11 @@ export function Grid() {
       if (key === "v") {
         original.preventDefault()
         shortcutActionsRef.current?.paste(selectedRow, selectedCol)
+        return
+      }
+      if (original.shiftKey && key === FORMATTING_MENU_SHORTCUT_KEY) {
+        original.preventDefault()
+        void openFormattingPopoverAtSelection()
       }
     }
 
@@ -1949,6 +2118,7 @@ export function Grid() {
     handleNavigateToCell,
     handleRowHeaderClick,
     handleSelectAll,
+    openFormattingPopoverAtSelection,
     sendEmailDialogOpen,
     selectedCol,
     selectedRow,
@@ -2096,8 +2266,8 @@ export function Grid() {
       try {
         const item = new ClipboardItem({
           "text/plain": new Blob([plainText], { type: "text/plain" }),
-          "application/x-planar-cells": new Blob([JSON.stringify(payload)], {
-            type: "application/x-planar-cells",
+          "application/x-rowful-cells": new Blob([JSON.stringify(payload)], {
+            type: "application/x-rowful-cells",
           }),
         })
         await navigator.clipboard.write([item])
@@ -2190,10 +2360,10 @@ export function Grid() {
         try {
           const items = await navigator.clipboard.read()
           for (const item of items) {
-            if (!item.types.includes("application/x-planar-cells")) {
+            if (!item.types.includes("application/x-rowful-cells")) {
               continue
             }
-            const blob = await item.getType("application/x-planar-cells")
+            const blob = await item.getType("application/x-rowful-cells")
             const raw = await blob.text()
             const parsed = JSON.parse(raw) as ClipboardPayload
             if (
@@ -2617,268 +2787,303 @@ export function Grid() {
 
   return (
     <>
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <div
-            ref={gridContainerRef}
-            className={
-              formulaSelection
-                ? "sheet-grid formula-selection h-full"
-                : "sheet-grid h-full"
-            }
-            onPointerDownCapture={(event) => {
-              if (event.button !== 0) {
-                return
+      <Popover
+        open={formattingPopoverOpen}
+        onOpenChange={(open) => {
+          setFormattingPopoverOpen(open)
+          if (!open) {
+            setFormattingPopoverAnchor(null)
+          }
+        }}
+      >
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <div
+              ref={gridContainerRef}
+              className={
+                formulaSelection
+                  ? "sheet-grid formula-selection relative h-full"
+                  : "sheet-grid relative h-full"
               }
-              const target = event.target
-              if (!(target instanceof Element)) {
-                return
-              }
-              const sourceCell = getCellCoordsFromTarget(target)
-              if (!sourceCell) {
-                return
-              }
-              const sourceRange = getActiveSelectionRange()
-              if (
-                sourceRange.rowStart === sourceRange.rowEnd &&
-                sourceRange.colStart === sourceRange.colEnd
-              ) {
-                return
-              }
-              if (!isCellInsideRange(sourceCell, sourceRange)) {
-                return
-              }
-              if (sourceCell.row !== sourceRange.rowStart) {
-                return
-              }
-              dragMoveStateRef.current = {
-                pointerId: event.pointerId,
-                startClientX: event.clientX,
-                startClientY: event.clientY,
-                sourceRange,
-                isDragging: false,
-              }
-              setDropPreview(null)
-            }}
-            onMouseDownCapture={(event) => {
-              if (event.button === 2) {
-                event.preventDefault()
-              }
-            }}
-            onContextMenuCapture={(event) => {
-              const target = event.target
-              if (!(target instanceof Element)) {
-                setMenuContext(buildMenuContext(selectedRow, selectedCol))
-                return
-              }
-              const directCell = getCellCoordsFromTarget(target)
-              if (directCell) {
-                setMenuContext(buildMenuContext(directCell.row, directCell.col))
-                return
-              }
-              const rowIndex = getRowHeaderIndexFromTarget(target)
-              if (rowIndex) {
-                setMenuContext(buildMenuContext(rowIndex, selectedCol))
-                return
-              }
-              const rowHeaderViewport = target.closest(
-                'revogr-viewport-scroll[row-header], [row-header="true"]'
-              )
-              if (rowHeaderViewport) {
-                setMenuContext(buildMenuContext(selectedRow, selectedCol))
-                return
-              }
-              const headerCell = target.closest("revogr-header .rgHeaderCell")
-              if (!headerCell) {
-                setMenuContext(buildMenuContext(selectedRow, selectedCol))
-                return
-              }
-              const raw = (headerCell.textContent ?? "").trim()
-              if (!raw) {
-                setMenuContext(buildMenuContext(selectedRow, selectedCol))
-                return
-              }
-              const colIndex = toColumnNumber(raw)
-              if (colIndex) {
-                setMenuContext(buildMenuContext(selectedRow, colIndex))
-                return
-              }
-              setMenuContext(buildMenuContext(selectedRow, selectedCol))
-            }}
-            style={
-              {
-                "--planar-grid-font-size": `${Math.max(11, Math.round(12 * (zoom / 100)))}px`,
-                "--planar-grid-row-height": `${Math.max(26, Math.round(28 * (zoom / 100)))}px`,
-                "--planar-grid-font-family": `${sheetFontFamily}, "Segoe UI", Arial, sans-serif`,
-                cursor: isDraggingSelection ? "grabbing" : undefined,
-              } as React.CSSProperties
-            }
-          >
-            <RevoGrid
-              key={sheet.name}
-              ref={(element) => {
-                gridRef.current = element as GridViewportElement | null
+              onPointerDownCapture={(event) => {
+                setFormattingPopoverOpen(false)
+                if (event.button !== 0) {
+                  return
+                }
+                const target = event.target
+                if (!(target instanceof Element)) {
+                  return
+                }
+                const sourceCell = getCellCoordsFromTarget(target)
+                if (!sourceCell) {
+                  return
+                }
+                const sourceRange = getActiveSelectionRange()
+                if (
+                  sourceRange.rowStart === sourceRange.rowEnd &&
+                  sourceRange.colStart === sourceRange.colEnd
+                ) {
+                  return
+                }
+                if (!isCellInsideRange(sourceCell, sourceRange)) {
+                  return
+                }
+                if (sourceCell.row !== sourceRange.rowStart) {
+                  return
+                }
+                dragMoveStateRef.current = {
+                  pointerId: event.pointerId,
+                  startClientX: event.clientX,
+                  startClientY: event.clientY,
+                  sourceRange,
+                  isDragging: false,
+                }
+                setDropPreview(null)
               }}
-              theme="compact"
-              resize
-              rowHeaders
-              hideAttribution
-              canFocus
-              range
-              applyOnClose
-              columns={columns}
-              editors={gridEditors}
-              source={preparedGridData.source}
-              rowSize={rowSize}
-              onAftercolumnresize={handleAfterColumnResize}
-              onAfterfocus={handleAfterFocus}
-              onBeforeeditstart={handleBeforeEditStart}
-              onAfteredit={handleAfterEdit}
-              onAftergridinit={() => {
-                void syncGridDimensions()
-                scheduleViewportSync()
-              }}
-              onAftergridrender={() => {
-                scheduleViewportSync()
-              }}
-              onBeforefocuslost={(event) => {
-                if (!sendEmailDialogOpen && !extendKanbanDialogOpen) {
+              onMouseDownCapture={(event) => {
+                if (event.button === 2) {
                   event.preventDefault()
                 }
               }}
-              onViewportscroll={handleViewportScroll}
-            />
-          </div>
-        </ContextMenuTrigger>
-        {menuContext ? (
-          <ContextMenuContent>
-            {selectedRange ? (
-              <>
-                <ContextMenuItem
-                  onSelect={() => {
-                    handleCreateKanban()
-                  }}
-                >
-                  Create Kanban
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-              </>
-            ) : null}
-            {emailTargetsAtMenu.length > 0 ? (
-              <>
-                <ContextMenuItem
-                  onSelect={() => {
-                    setSendEmailTargets(emailTargetsAtMenu)
-                    setSendEmailSubject("Message from Planar")
-                    setSendEmailMessage("")
-                    setSendEmailDialogOpen(true)
-                  }}
-                >
-                  Send Email
-                  {emailTargetsAtMenu.length > 1
-                    ? ` (${emailTargetsAtMenu.length})`
-                    : ""}
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-              </>
-            ) : null}
-            <ContextMenuItem
-              onSelect={() => {
-                void handleCut()
+              onContextMenuCapture={(event) => {
+                setFormattingPopoverOpen(false)
+                const target = event.target
+                if (!(target instanceof Element)) {
+                  setMenuContext(buildMenuContext(selectedRow, selectedCol))
+                  return
+                }
+                const directCell = getCellCoordsFromTarget(target)
+                if (directCell) {
+                  setMenuContext(
+                    buildMenuContext(directCell.row, directCell.col)
+                  )
+                  return
+                }
+                const rowIndex = getRowHeaderIndexFromTarget(target)
+                if (rowIndex) {
+                  setMenuContext(buildMenuContext(rowIndex, selectedCol))
+                  return
+                }
+                const rowHeaderViewport = target.closest(
+                  'revogr-viewport-scroll[row-header], [row-header="true"]'
+                )
+                if (rowHeaderViewport) {
+                  setMenuContext(buildMenuContext(selectedRow, selectedCol))
+                  return
+                }
+                const headerCell = target.closest("revogr-header .rgHeaderCell")
+                if (!headerCell) {
+                  setMenuContext(buildMenuContext(selectedRow, selectedCol))
+                  return
+                }
+                const raw = (headerCell.textContent ?? "").trim()
+                if (!raw) {
+                  setMenuContext(buildMenuContext(selectedRow, selectedCol))
+                  return
+                }
+                const colIndex = toColumnNumber(raw)
+                if (colIndex) {
+                  setMenuContext(buildMenuContext(selectedRow, colIndex))
+                  return
+                }
+                setMenuContext(buildMenuContext(selectedRow, selectedCol))
               }}
+              style={
+                {
+                  "--rowful-grid-font-size": `${Math.max(11, Math.round(12 * (zoom / 100)))}px`,
+                  "--rowful-grid-row-height": `${Math.max(26, Math.round(28 * (zoom / 100)))}px`,
+                  "--rowful-grid-font-family": `${sheetFontFamily}, "Segoe UI", Arial, sans-serif`,
+                  cursor: isDraggingSelection ? "grabbing" : undefined,
+                } as React.CSSProperties
+              }
             >
-              Cut
-            </ContextMenuItem>
-            <ContextMenuItem
-              onSelect={() => {
-                void handleCopy()
-              }}
-            >
-              Copy
-            </ContextMenuItem>
-            <ContextMenuItem
-              onSelect={() => {
-                void handlePasteAt(menuContext.row, menuContext.col)
-              }}
-            >
-              Paste
-            </ContextMenuItem>
-            <CellFormattingContextMenu />
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              onSelect={() => {
-                void insertRowsAt(menuContext.rowStart, menuContext.rowCount)
-              }}
-            >
-              Insert {menuContext.rowCount} row
-              {menuContext.rowCount > 1 ? "s" : ""} above
-            </ContextMenuItem>
-            <ContextMenuItem
-              onSelect={() => {
-                void insertColsAt(menuContext.colStart, menuContext.colCount)
-              }}
-            >
-              Insert {menuContext.colCount} column
-              {menuContext.colCount > 1 ? "s" : ""} left
-            </ContextMenuItem>
-            <ContextMenuItem
-              onSelect={() => {
-                void deleteRowsAt(menuContext.rowStart, menuContext.rowCount)
-              }}
-            >
-              Delete row
-              {menuContext.rowCount > 1 ? "s" : ""} {menuContext.rowStart}
-              {menuContext.rowCount > 1
-                ? `-${menuContext.rowStart + menuContext.rowCount - 1}`
-                : ""}
-            </ContextMenuItem>
-            <ContextMenuItem
-              onSelect={() => {
-                void deleteColsAt(menuContext.colStart, menuContext.colCount)
-              }}
-            >
-              Delete column
-              {menuContext.colCount > 1 ? "s" : ""}{" "}
-              {toColumnLabel(menuContext.colStart)}
-              {menuContext.colCount > 1
-                ? `-${toColumnLabel(menuContext.colStart + menuContext.colCount - 1)}`
-                : ""}
-            </ContextMenuItem>
-            {activeKanbanRegionAtMenu ? (
-              <>
-                <ContextMenuSeparator />
-                <ContextMenuItem
-                  onSelect={() => {
-                    void handleCreateCardFromGrid()
-                  }}
-                >
-                  Add Kanban Card
-                </ContextMenuItem>
-                <ContextMenuItem
-                  onSelect={() => {
-                    setExtendKanbanRegionId(activeKanbanRegionAtMenu.id)
-                    setExtendKanbanAxis("rows")
-                    setExtendKanbanAmount("1")
-                    setExtendKanbanDialogOpen(true)
-                  }}
-                >
-                  Extend Kanban Rows
-                </ContextMenuItem>
-                <ContextMenuItem
-                  onSelect={() => {
-                    setExtendKanbanRegionId(activeKanbanRegionAtMenu.id)
-                    setExtendKanbanAxis("cols")
-                    setExtendKanbanAmount("1")
-                    setExtendKanbanDialogOpen(true)
-                  }}
-                >
-                  Extend Kanban Columns
-                </ContextMenuItem>
-              </>
-            ) : null}
-          </ContextMenuContent>
+              {formattingPopoverAnchor ? (
+                <PopoverAnchor asChild>
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute"
+                    style={{
+                      left: formattingPopoverAnchor.left,
+                      top: formattingPopoverAnchor.top,
+                      width: formattingPopoverAnchor.width,
+                      height: formattingPopoverAnchor.height,
+                    }}
+                  />
+                </PopoverAnchor>
+              ) : null}
+              <RevoGrid
+                key={sheet.name}
+                ref={(element) => {
+                  gridRef.current = element as GridViewportElement | null
+                }}
+                theme="compact"
+                resize
+                rowHeaders
+                hideAttribution
+                canFocus
+                range
+                applyOnClose
+                columns={columns}
+                editors={gridEditors}
+                source={preparedGridData.source}
+                rowSize={rowSize}
+                onAftercolumnresize={handleAfterColumnResize}
+                onAfterfocus={handleAfterFocus}
+                onBeforeeditstart={handleBeforeEditStart}
+                onAfteredit={handleAfterEdit}
+                onAftergridinit={() => {
+                  void syncGridDimensions()
+                  scheduleViewportSync()
+                }}
+                onAftergridrender={() => {
+                  scheduleViewportSync()
+                }}
+                onBeforefocuslost={(event) => {
+                  if (!sendEmailDialogOpen && !extendKanbanDialogOpen) {
+                    event.preventDefault()
+                  }
+                }}
+                onViewportscroll={handleViewportScroll}
+              />
+            </div>
+          </ContextMenuTrigger>
+          {menuContext ? (
+            <ContextMenuContent>
+              {selectedRange ? (
+                <>
+                  <ContextMenuItem
+                    onSelect={() => {
+                      handleCreateKanban()
+                    }}
+                  >
+                    Create Kanban
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                </>
+              ) : null}
+              {emailTargetsAtMenu.length > 0 ? (
+                <>
+                  <ContextMenuItem
+                    onSelect={() => {
+                      setSendEmailTargets(emailTargetsAtMenu)
+                      setSendEmailSubject("Message from Rowful")
+                      setSendEmailMessage("")
+                      setSendEmailDialogOpen(true)
+                    }}
+                  >
+                    Send Email
+                    {emailTargetsAtMenu.length > 1
+                      ? ` (${emailTargetsAtMenu.length})`
+                      : ""}
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                </>
+              ) : null}
+              <ContextMenuItem
+                onSelect={() => {
+                  void handleCut()
+                }}
+              >
+                Cut
+              </ContextMenuItem>
+              <ContextMenuItem
+                onSelect={() => {
+                  void handleCopy()
+                }}
+              >
+                Copy
+              </ContextMenuItem>
+              <ContextMenuItem
+                onSelect={() => {
+                  void handlePasteAt(menuContext.row, menuContext.col)
+                }}
+              >
+                Paste
+              </ContextMenuItem>
+              <CellFormattingContextMenu
+                shortcutLabel={formattingShortcutLabel}
+              />
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                onSelect={() => {
+                  void insertRowsAt(menuContext.rowStart, menuContext.rowCount)
+                }}
+              >
+                Insert {menuContext.rowCount} row
+                {menuContext.rowCount > 1 ? "s" : ""} above
+              </ContextMenuItem>
+              <ContextMenuItem
+                onSelect={() => {
+                  void insertColsAt(menuContext.colStart, menuContext.colCount)
+                }}
+              >
+                Insert {menuContext.colCount} column
+                {menuContext.colCount > 1 ? "s" : ""} left
+              </ContextMenuItem>
+              <ContextMenuItem
+                onSelect={() => {
+                  void deleteRowsAt(menuContext.rowStart, menuContext.rowCount)
+                }}
+              >
+                Delete row
+                {menuContext.rowCount > 1 ? "s" : ""} {menuContext.rowStart}
+                {menuContext.rowCount > 1
+                  ? `-${menuContext.rowStart + menuContext.rowCount - 1}`
+                  : ""}
+              </ContextMenuItem>
+              <ContextMenuItem
+                onSelect={() => {
+                  void deleteColsAt(menuContext.colStart, menuContext.colCount)
+                }}
+              >
+                Delete column
+                {menuContext.colCount > 1 ? "s" : ""}{" "}
+                {toColumnLabel(menuContext.colStart)}
+                {menuContext.colCount > 1
+                  ? `-${toColumnLabel(menuContext.colStart + menuContext.colCount - 1)}`
+                  : ""}
+              </ContextMenuItem>
+              {activeKanbanRegionAtMenu ? (
+                <>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem
+                    onSelect={() => {
+                      void handleCreateCardFromGrid()
+                    }}
+                  >
+                    Add Kanban Card
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    onSelect={() => {
+                      setExtendKanbanRegionId(activeKanbanRegionAtMenu.id)
+                      setExtendKanbanAxis("rows")
+                      setExtendKanbanAmount("1")
+                      setExtendKanbanDialogOpen(true)
+                    }}
+                  >
+                    Extend Kanban Rows
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    onSelect={() => {
+                      setExtendKanbanRegionId(activeKanbanRegionAtMenu.id)
+                      setExtendKanbanAxis("cols")
+                      setExtendKanbanAmount("1")
+                      setExtendKanbanDialogOpen(true)
+                    }}
+                  >
+                    Extend Kanban Columns
+                  </ContextMenuItem>
+                </>
+              ) : null}
+            </ContextMenuContent>
+          ) : null}
+        </ContextMenu>
+        {formattingPopoverAnchor ? (
+          <PopoverContent align="start" className="w-72 p-0" sideOffset={8}>
+            <CellFormattingPanel />
+          </PopoverContent>
         ) : null}
-      </ContextMenu>
+      </Popover>
       <Dialog
         open={extendKanbanDialogOpen}
         onOpenChange={setExtendKanbanDialogOpen}

@@ -35,7 +35,6 @@ export function UserActionsPopover({ className }: UserActionsPopoverProps) {
 
   const isFilesPage = location.pathname.startsWith("/files")
   const isDomainsPage = location.pathname.startsWith("/domains")
-  const isAccessPage = location.pathname.startsWith("/admin/access")
   const label = user?.name ?? user?.email
   const isDarkTheme = resolvedTheme === "dark"
 
@@ -57,15 +56,6 @@ export function UserActionsPopover({ className }: UserActionsPopoverProps) {
             <p className="text-xs text-muted-foreground">{user?.email}</p>
           </PopoverHeader>
 
-          {user?.isAdmin ? (
-            <Button
-              variant={isAccessPage ? "secondary" : "ghost"}
-              className="w-full justify-start"
-              onClick={() => navigate("/admin/access")}
-            >
-              Access
-            </Button>
-          ) : null}
           {user?.isAdmin ? (
             <Button
               variant={isDomainsPage ? "secondary" : "ghost"}

@@ -3,8 +3,8 @@ package handlers
 import (
 	"net/http"
 
-	"planar/models"
-	"planar/storage"
+	"rowful/models"
+	"rowful/storage"
 )
 
 func requireWorkbookAccess(r *http.Request, store *storage.Store, workbookID string) (models.AuthUser, error) {

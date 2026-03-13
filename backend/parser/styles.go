@@ -5,7 +5,7 @@ import (
 
 	"github.com/xuri/excelize/v2"
 
-	"planar/models"
+	"rowful/models"
 )
 
 type styleResolver struct {

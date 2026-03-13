@@ -8,7 +8,7 @@ import { ThemeProvider } from "./components/theme-provider"
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ThemeProvider>
+    <ThemeProvider storageKey="rowful" defaultTheme="dark">
       <BrowserRouter>
         <App />
       </BrowserRouter>

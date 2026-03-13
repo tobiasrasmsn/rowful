@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"planar/models"
+	"rowful/models"
 )
 
 func (s *Store) migrateAuthTables() error {
@@ -91,7 +91,7 @@ func (s *Store) GetBootstrapState() (models.AuthBootstrap, error) {
 	}
 	return models.AuthBootstrap{
 		SetupRequired: count == 0,
-		InviteOnly:    count > 0,
+		InviteOnly:    false,
 	}, nil
 }
 
@@ -115,28 +115,11 @@ func (s *Store) CreateUser(name, email, passwordHash string) (models.AuthUser, e
 	if err == nil {
 		return models.AuthUser{}, ErrConflict
 	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && err != sql.ErrNoRows {
 		return models.AuthUser{}, fmt.Errorf("check existing user: %w", err)
 	}
 
 	isAdmin := userCount == 0
-	if !isAdmin {
-		var claimedBy sql.NullString
-		err := tx.QueryRow(`
-SELECT claimed_by
-FROM signup_allowlist
-WHERE email = ?
-`, normalizedEmail).Scan(&claimedBy)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return models.AuthUser{}, ErrForbidden
-			}
-			return models.AuthUser{}, fmt.Errorf("load allowlist entry: %w", err)
-		}
-		if claimedBy.Valid {
-			return models.AuthUser{}, ErrConflict
-		}
-	}
 
 	user := models.AuthUser{
 		ID:        uuid.NewString(),
@@ -158,14 +141,6 @@ VALUES(?, ?, ?, ?, ?, ?)
 	if isAdmin {
 		if err := s.claimLegacyWorkbooksTx(tx, user.ID); err != nil {
 			return models.AuthUser{}, err
-		}
-	} else {
-		if _, err := tx.Exec(`
-UPDATE signup_allowlist
-SET claimed_by = ?, claimed_at = ?
-WHERE email = ? AND claimed_by IS NULL
-`, user.ID, now.Format(time.RFC3339Nano), normalizedEmail); err != nil {
-			return models.AuthUser{}, fmt.Errorf("consume allowlist entry: %w", err)
 		}
 	}
 

@@ -160,7 +160,7 @@ export function SheetTabs({ className, compact = false }: SheetTabsProps) {
           <div className="relative min-w-0 flex-1">
             <div
               ref={tabsScrollRef}
-              className="h-12 w-full min-w-0 translate-x-6 overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-color:color-mix(in_oklab,var(--border)_75%,transparent)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/70 [&::-webkit-scrollbar-thumb:hover]:bg-border [&::-webkit-scrollbar-track]:bg-transparent"
+              className="h-12 w-full min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-color:color-mix(in_oklab,var(--border)_75%,transparent)_transparent] [scrollbar-width:thin] md:translate-x-6 [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/70 [&::-webkit-scrollbar-thumb:hover]:bg-border [&::-webkit-scrollbar-track]:bg-transparent"
             >
               <TabsList className="h-full! min-h-0 w-max min-w-full flex-nowrap items-end justify-start gap-1 bg-transparent p-0 pb-0">
                 {(workbook?.sheets ?? []).map((sheetMeta) => (
@@ -216,7 +216,7 @@ export function SheetTabs({ className, compact = false }: SheetTabsProps) {
               <div className="pointer-events-none absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent" />
             ) : null}
           </div>
-          <FileSettingsButton className="mb-px shrink-0 -translate-x-6" />
+          <FileSettingsButton className="mb-px shrink-0 md:-translate-x-6" />
         </div>
       </Tabs>
 

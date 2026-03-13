@@ -31,7 +31,7 @@ func Load() Config {
 		Port:             port,
 		MaxFileSizeBytes: maxMB * 1024 * 1024,
 		AllowedOrigins:   allowedOrigins,
-		DatabasePath:     getEnv("DB_PATH", "./planar.db"),
+		DatabasePath:     getEnv("DB_PATH", "./rowful.db"),
 		UploadDir:        getEnv("UPLOAD_DIR", "./uploads"),
 		PublicIPs:        loadPublicIPs(),
 		CaddyAdminURL:    getEnv("CADDY_ADMIN_URL", "http://caddy:2019"),

@@ -13,11 +13,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"planar/cache"
-	"planar/config"
-	"planar/models"
-	"planar/parser"
-	"planar/storage"
+	"rowful/cache"
+	"rowful/config"
+	"rowful/models"
+	"rowful/parser"
+	"rowful/storage"
 )
 
 type UploadHandler struct {

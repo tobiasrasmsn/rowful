@@ -5,12 +5,12 @@ COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
 COPY backend/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/planar ./main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/rowful ./main.go
 
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /app
-COPY --from=builder /bin/planar /app/planar
+COPY --from=builder /bin/rowful /app/rowful
 
 EXPOSE 8080
 ENV PORT=8080
-ENTRYPOINT ["/app/planar"]
+ENTRYPOINT ["/app/rowful"]
