@@ -3,7 +3,7 @@ import {
   useEffect,
   useMemo,
   useState,
-  type DragEvent,
+  type ReactNode,
 } from "react"
 import {
   Add01Icon,
@@ -13,6 +13,15 @@ import {
   MoreVerticalIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  DragDropProvider,
+  DragOverlay,
+  useDraggable,
+  useDroppable,
+  type DragEndEvent,
+  type DragMoveEvent,
+  type DragStartEvent,
+} from "@dnd-kit/react"
 import { toast } from "sonner"
 
 import { useSheetStore } from "@/store/sheetStore"
@@ -51,30 +60,53 @@ type KanbanViewProps = {
   region: KanbanRegion
 }
 
-type DragCardPayload = {
+type DragCardData = {
   kind: "card"
   row: number
   status: string
 }
 
-const parsePayload = (raw: string): DragCardPayload | null => {
-  try {
-    const parsed = JSON.parse(raw) as DragCardPayload
-    if (!parsed || typeof parsed !== "object") {
-      return null
-    }
-    if (
-      parsed.kind === "card" &&
-      typeof parsed.row === "number" &&
-      typeof parsed.status === "string"
-    ) {
-      return parsed
-    }
-    return null
-  } catch {
-    return null
-  }
+type DropSlotData = {
+  kind: "slot"
+  status: string
+  index: number
 }
+
+type DropColumnData = {
+  kind: "column"
+  status: string
+}
+
+const EMPTY_KANBAN_STATUS = ""
+const EMPTY_KANBAN_STATUS_LABEL = "No status"
+
+const normalizeKanbanStatus = (value: string | null | undefined) =>
+  value?.trim() ?? EMPTY_KANBAN_STATUS
+
+const getKanbanStatusLabel = (status: string) =>
+  status || EMPTY_KANBAN_STATUS_LABEL
+
+const isDragCardData = (value: unknown): value is DragCardData =>
+  Boolean(
+    value &&
+    typeof value === "object" &&
+    "kind" in value &&
+    "row" in value &&
+    "status" in value &&
+    (value as DragCardData).kind === "card" &&
+    typeof (value as DragCardData).row === "number" &&
+    typeof (value as DragCardData).status === "string"
+  )
+
+const isDropColumnData = (value: unknown): value is DropColumnData =>
+  Boolean(
+    value &&
+    typeof value === "object" &&
+    "kind" in value &&
+    "status" in value &&
+    (value as DropColumnData).kind === "column" &&
+    typeof (value as DropColumnData).status === "string"
+  )
 
 const EMPTY_STATUS_VALUE = "__KANBAN_EMPTY_STATUS__"
 const CARD_COLORS = ["none", "green", "red", "yellow", "purple"] as const
@@ -198,6 +230,80 @@ const suggestCardColor = (value: string): CardColor => {
   return "none"
 }
 
+const getKanbanColumnDomId = (status: string) =>
+  encodeURIComponent(status || EMPTY_STATUS_VALUE)
+
+type KanbanColumnDropZoneProps = {
+  status: string
+  disabled: boolean
+  children: ReactNode
+}
+
+function KanbanColumnDropZone({
+  status,
+  disabled,
+  children,
+}: KanbanColumnDropZoneProps) {
+  const { ref } = useDroppable<DropColumnData>({
+    id: `kanban-column:${status}`,
+    data: {
+      kind: "column",
+      status,
+    },
+    disabled,
+  })
+
+  return (
+    <div
+      ref={ref}
+      data-kanban-column-id={getKanbanColumnDomId(status)}
+      className="flex min-h-16 flex-col gap-2"
+    >
+      {children}
+    </div>
+  )
+}
+
+type KanbanCardItemProps = {
+  row: number
+  status: string
+  disabled: boolean
+  renderCardBody: (
+    row: number,
+    interactive: boolean,
+    dragHandleRef?: (element: Element | null) => void
+  ) => ReactNode
+}
+
+function KanbanCardItem({
+  row,
+  status,
+  disabled,
+  renderCardBody,
+}: KanbanCardItemProps) {
+  const { ref, handleRef, isDragSource } = useDraggable<DragCardData>({
+    id: `kanban-card:${row}`,
+    data: {
+      kind: "card",
+      row,
+      status,
+    },
+    disabled,
+  })
+
+  return (
+    <div
+      ref={ref}
+      data-kanban-card-row={row}
+      className={`rounded-lg border border-border bg-background/75 transition ${
+        isDragSource ? "opacity-40" : ""
+      }`}
+    >
+      {renderCardBody(row, !disabled, handleRef)}
+    </div>
+  )
+}
+
 export function KanbanView({ region }: KanbanViewProps) {
   const sheet = useSheetStore((state) => state.sheet)
   const updateCell = useSheetStore((state) => state.updateCell)
@@ -213,18 +319,13 @@ export function KanbanView({ region }: KanbanViewProps) {
     (state) => state.setKanbanCardColorConfig
   )
   const createKanbanCard = useSheetStore((state) => state.createKanbanCard)
-  const [draggingRow, setDraggingRow] = useState<number | null>(null)
-  const [dragPreview, setDragPreview] = useState<{
-    x: number
-    y: number
-    row: number
-  } | null>(null)
-  const [dragCursorOffset, setDragCursorOffset] = useState<{
-    x: number
-    y: number
-  } | null>(null)
+  const [activeDrag, setActiveDrag] = useState<DragCardData | null>(null)
+  const [activeDropSlot, setActiveDropSlot] = useState<DropSlotData | null>(
+    null
+  )
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [creatingStatus, setCreatingStatus] = useState<string | null>(null)
+  const [movingCard, setMovingCard] = useState(false)
   const [columnSettingsStatus, setColumnSettingsStatus] = useState<
     string | null
   >(null)
@@ -269,18 +370,21 @@ export function KanbanView({ region }: KanbanViewProps) {
   const statuses = useMemo(() => {
     const values = new Set<string>()
     for (const row of rows) {
-      const status = matrix.get(row)?.get(region.statusCol)?.trim()
-      if (status) {
-        values.add(status)
-      }
+      values.add(normalizeKanbanStatus(matrix.get(row)?.get(region.statusCol)))
     }
-    const inData = Array.from(values)
-    const configured = (region.statusOrder ?? []).filter(Boolean)
-    const merged = [
+    const inData = Array.from(values).filter(Boolean)
+    const configured = Array.from(
+      new Set(
+        (region.statusOrder ?? [])
+          .map((status) => normalizeKanbanStatus(status))
+          .filter(Boolean)
+      )
+    )
+    return [
       ...configured,
       ...inData.filter((status) => !configured.includes(status)),
+      EMPTY_KANBAN_STATUS,
     ]
-    return merged.length > 0 ? merged : ["No status"]
   }, [matrix, region.statusCol, region.statusOrder, rows])
 
   const cardsByStatus = useMemo(() => {
@@ -289,8 +393,9 @@ export function KanbanView({ region }: KanbanViewProps) {
       map.set(status, [])
     }
     for (const row of rows) {
-      const raw = matrix.get(row)?.get(region.statusCol)?.trim()
-      const status = raw || "No status"
+      const status = normalizeKanbanStatus(
+        matrix.get(row)?.get(region.statusCol)
+      )
       if (!map.has(status)) {
         map.set(status, [])
       }
@@ -298,10 +403,7 @@ export function KanbanView({ region }: KanbanViewProps) {
     }
     return map
   }, [matrix, region.statusCol, rows, statuses])
-  const orderedStatuses = useMemo(
-    () => statuses.filter((status) => status !== "No status"),
-    [statuses]
-  )
+  const orderedStatuses = useMemo(() => statuses.filter(Boolean), [statuses])
 
   const defaultTitleCol = useMemo(() => {
     for (
@@ -388,24 +490,135 @@ export function KanbanView({ region }: KanbanViewProps) {
     return map
   }, [region.cardColorMap])
 
-  const moveDroppedCard = (
-    event: DragEvent<HTMLElement>,
-    targetStatus: string,
-    targetIndex: number
-  ) => {
-    const payload = parsePayload(event.dataTransfer.getData("application/json"))
-    if (!payload || payload.kind !== "card") {
-      return false
-    }
-    void moveKanbanCard(region.id, payload.row, targetStatus, targetIndex)
-    return true
-  }
+  const findDropSlot = useCallback(
+    (status: string, clientY: number, sourceRow?: number) => {
+      const column = document.querySelector<HTMLElement>(
+        `[data-kanban-column-id="${getKanbanColumnDomId(status)}"]`
+      )
+      if (!column) {
+        return null
+      }
+
+      const cards = Array.from(
+        column.querySelectorAll<HTMLElement>("[data-kanban-card-row]")
+      ).filter((card) =>
+        sourceRow === undefined
+          ? true
+          : Number(card.dataset.kanbanCardRow) !== sourceRow
+      )
+
+      let index = cards.length
+      for (let cardIndex = 0; cardIndex < cards.length; cardIndex += 1) {
+        const rect = cards[cardIndex].getBoundingClientRect()
+        if (clientY < rect.top + rect.height / 2) {
+          index = cardIndex
+          break
+        }
+      }
+
+      return {
+        kind: "slot" as const,
+        status,
+        index,
+      }
+    },
+    []
+  )
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const sourceData = event.operation.source?.data
+    setActiveDropSlot(null)
+    setActiveDrag(isDragCardData(sourceData) ? sourceData : null)
+  }, [])
+
+  const updateActiveDropSlot = useCallback(
+    (operation: {
+      source?: { data?: unknown } | null
+      target?: { data?: unknown } | null
+      position: { current: { y: number } }
+    }) => {
+      const targetData = operation.target?.data
+      const sourceData = operation.source?.data
+      if (!isDropColumnData(targetData)) {
+        setActiveDropSlot(null)
+        return
+      }
+      setActiveDropSlot(
+        findDropSlot(
+          targetData.status,
+          operation.position.current.y,
+          isDragCardData(sourceData) ? sourceData.row : undefined
+        )
+      )
+    },
+    [findDropSlot]
+  )
+
+  const handleDragMove = useCallback(
+    (event: DragMoveEvent) => {
+      updateActiveDropSlot(event.operation)
+    },
+    [updateActiveDropSlot]
+  )
+
+  const handleDragOver = useCallback(
+    (event: {
+      operation: {
+        source?: { data?: unknown } | null
+        target?: { data?: unknown } | null
+        position: { current: { y: number } }
+      }
+    }) => {
+      updateActiveDropSlot(event.operation)
+    },
+    [updateActiveDropSlot]
+  )
+
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const sourceData = event.operation.source?.data
+      const targetData = event.operation.target?.data
+
+      setActiveDrag(null)
+      setActiveDropSlot(null)
+
+      if (
+        event.canceled ||
+        !isDragCardData(sourceData) ||
+        !isDropColumnData(targetData)
+      ) {
+        return
+      }
+
+      const finalDropSlot = findDropSlot(
+        targetData.status,
+        event.operation.position.current.y,
+        sourceData.row
+      )
+      if (!finalDropSlot) {
+        return
+      }
+
+      setMovingCard(true)
+      try {
+        await moveKanbanCard(
+          region.id,
+          sourceData.row,
+          finalDropSlot.status,
+          finalDropSlot.index
+        )
+      } finally {
+        setMovingCard(false)
+      }
+    },
+    [findDropSlot, moveKanbanCard, region.id]
+  )
 
   const handleCreateCard = useCallback(
     async (status: string) => {
       setCreatingStatus(status)
       const row = await createKanbanCard(region.id, {
-        status: status === "No status" ? "" : status,
+        status,
       })
       setCreatingStatus((current) => (current === status ? null : current))
       if (row === null) {
@@ -417,7 +630,7 @@ export function KanbanView({ region }: KanbanViewProps) {
 
   const moveStatus = useCallback(
     (status: string, direction: -1 | 1) => {
-      if (status === "No status") {
+      if (!status) {
         return
       }
       const index = orderedStatuses.indexOf(status)
@@ -435,7 +648,7 @@ export function KanbanView({ region }: KanbanViewProps) {
 
   const deleteStatus = useCallback(
     (status: string, cards: number[]) => {
-      if (status === "No status") {
+      if (!status) {
         return
       }
       if (cards.length > 0) {
@@ -523,7 +736,11 @@ export function KanbanView({ region }: KanbanViewProps) {
     return inferredCardColorMap[status] ?? "none"
   }
 
-  const renderCardBody = (row: number, interactive: boolean) => (
+  const renderCardBody = (
+    row: number,
+    interactive: boolean,
+    dragHandleRef?: (element: Element | null) => void
+  ) => (
     <>
       <div className="mb-2 flex items-center justify-between">
         <div className="flex w-full flex-row items-center justify-between border-b px-3 py-2 text-sm font-medium text-foreground">
@@ -537,9 +754,15 @@ export function KanbanView({ region }: KanbanViewProps) {
               {matrix.get(row)?.get(titleCol) || `Row ${row}`}
             </span>
           </span>
-          <span className="cursor-grab text-muted-foreground">
+          <button
+            type="button"
+            className="cursor-grab touch-none text-muted-foreground disabled:cursor-not-allowed"
+            disabled={!interactive}
+            ref={dragHandleRef}
+            aria-label={`Drag ${matrix.get(row)?.get(titleCol) || `row ${row}`}`}
+          >
             <HugeiconsIcon icon={DragDropIcon} className="size-4" />
-          </span>
+          </button>
         </div>
       </div>
       <div className="flex flex-col gap-2 p-4">
@@ -576,12 +799,12 @@ export function KanbanView({ region }: KanbanViewProps) {
                       <SelectItem
                         key={statusOption}
                         value={
-                          statusOption === "No status"
+                          statusOption === EMPTY_KANBAN_STATUS
                             ? EMPTY_STATUS_VALUE
                             : statusOption
                         }
                       >
-                        {statusOption}
+                        {getKanbanStatusLabel(statusOption)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -810,7 +1033,9 @@ export function KanbanView({ region }: KanbanViewProps) {
                             className="flex items-center justify-between gap-2 rounded border border-border bg-background px-2 py-1 text-xs font-normal text-foreground"
                           >
                             <span className="truncate" title={value}>
-                              {value}
+                              {colorMode === "columns"
+                                ? getKanbanStatusLabel(value)
+                                : value}
                             </span>
                             <select
                               className="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground"
@@ -845,251 +1070,201 @@ export function KanbanView({ region }: KanbanViewProps) {
           </Dialog>
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-4">
-        <div className="flex flex-row gap-3">
-          {statuses.map((status) => {
-            const cards = cardsByStatus.get(status) ?? []
-            const statusIndex = orderedStatuses.indexOf(status)
-            const canMoveLeft = statusIndex > 0
-            const canMoveRight =
-              statusIndex >= 0 && statusIndex < orderedStatuses.length - 1
-            const canDeleteStatus = status !== "No status" && cards.length === 0
-            const statusColor = columnColorForStatus(status)
-            return (
-              <div
-                key={status}
-                className="flex w-72 min-w-72 flex-col overflow-hidden"
-              >
-                <div className="py-2 text-sm font-medium">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex min-w-0 items-center gap-2 truncate text-lg">
-                      {colorMode === "columns" && statusColor !== "none" ? (
-                        <span
-                          className={`inline-block size-2 shrink-0 rounded-xs ${colorDotClass[statusColor]}`}
-                        />
-                      ) : null}
-                      <span className="truncate text-lg">{status}</span>
-                    </span>
-                    <Dialog
-                      open={columnSettingsStatus === status}
-                      onOpenChange={(open) => {
-                        setColumnSettingsStatus(open ? status : null)
-                      }}
-                    >
-                      <DialogTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          className="text-muted-foreground"
-                          aria-label={`Open settings for ${status}`}
-                        >
-                          <HugeiconsIcon
-                            icon={MoreVerticalIcon}
-                            className="size-4"
-                          />
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                          <DialogTitle>{status}</DialogTitle>
-                          <DialogDescription>
-                            Reorder this column or delete it when it has no
-                            cards.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="grid gap-4">
-                          <div className="rounded-xl border border-border bg-muted/30 p-3">
-                            <div className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">
-                              Position
-                            </div>
-                            <div className="mt-1 text-sm text-foreground">
-                              {status === "No status"
-                                ? "This fallback column stays after named statuses."
-                                : `${statusIndex + 1} of ${orderedStatuses.length}`}
-                            </div>
-                            <div className="mt-3 flex gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="flex-1"
-                                disabled={!canMoveLeft}
-                                onClick={() => moveStatus(status, -1)}
-                              >
-                                <HugeiconsIcon
-                                  icon={ArrowLeft01Icon}
-                                  className="size-4"
-                                />
-                                Move left
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="flex-1"
-                                disabled={!canMoveRight}
-                                onClick={() => moveStatus(status, 1)}
-                              >
-                                Move right
-                                <HugeiconsIcon
-                                  icon={ArrowRight01Icon}
-                                  className="size-4"
-                                />
-                              </Button>
-                            </div>
-                          </div>
-                          <div className="rounded-xl border border-border bg-muted/30 p-3">
-                            <div className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">
-                              Delete
-                            </div>
-                            <div className="mt-1 text-sm text-muted-foreground">
-                              {canDeleteStatus
-                                ? "This empty column can be removed."
-                                : status === "No status"
-                                  ? "The fallback column cannot be deleted."
-                                  : "Move or clear all cards here before deleting this column."}
-                            </div>
-                          </div>
-                        </div>
-                        <DialogFooter className="justify-between sm:justify-between">
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            disabled={!canDeleteStatus}
-                            onClick={() => deleteStatus(status, cards)}
-                          >
-                            Delete column
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => setColumnSettingsStatus(null)}
-                          >
-                            Close
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                </div>
+      <DragDropProvider
+        onDragStart={handleDragStart}
+        onDragMove={handleDragMove}
+        onDragOver={handleDragOver}
+        onDragEnd={(event) => {
+          void handleDragEnd(event)
+        }}
+      >
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          <div className="flex flex-row gap-3">
+            {statuses.map((status) => {
+              const cards = cardsByStatus.get(status) ?? []
+              const statusIndex = orderedStatuses.indexOf(status)
+              const canMoveLeft = statusIndex > 0
+              const canMoveRight =
+                statusIndex >= 0 && statusIndex < orderedStatuses.length - 1
+              const canDeleteStatus = Boolean(status) && cards.length === 0
+              const statusColor = columnColorForStatus(status)
+              const statusLabel = getKanbanStatusLabel(status)
+              return (
                 <div
-                  className="flex min-h-16 flex-col gap-2"
-                  onDragOver={(event) => {
-                    event.preventDefault()
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    moveDroppedCard(event, status, cards.length)
-                  }}
+                  key={status}
+                  className="flex w-72 min-w-72 flex-col overflow-hidden"
                 >
-                  <button
-                    type="button"
-                    className="flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-muted px-3 text-sm font-medium text-muted-foreground transition hover:border-foreground/15 hover:text-foreground hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={creatingStatus === status}
-                    onDragOver={(event) => {
-                      event.preventDefault()
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      moveDroppedCard(event, status, 0)
-                    }}
-                    onClick={() => {
-                      void handleCreateCard(status)
-                    }}
-                  >
-                    <HugeiconsIcon icon={Add01Icon} className="size-5" />
-                  </button>
-                  {cards.map((row, cardIndex) => (
-                    <div
-                      key={row}
-                      draggable
-                      className={`rounded-lg border border-border bg-background/75 ${
-                        draggingRow === row ? "opacity-40" : ""
-                      }`}
-                      onDragStart={(event) => {
-                        const rect = event.currentTarget.getBoundingClientRect()
-                        const cursorOffset = {
-                          x: event.clientX - rect.left,
-                          y: event.clientY - rect.top,
-                        }
-                        const transparentPixel =
-                          document.createElement("canvas")
-                        transparentPixel.width = 1
-                        transparentPixel.height = 1
-                        const img = new Image()
-                        img.src = transparentPixel.toDataURL()
-                        event.dataTransfer.setDragImage(img, 0, 0)
-                        event.dataTransfer.effectAllowed = "move"
-                        event.dataTransfer.setData(
-                          "application/json",
-                          JSON.stringify({
-                            kind: "card",
-                            row,
-                            status,
-                          } satisfies DragCardPayload)
-                        )
-                        setDraggingRow(row)
-                        setDragCursorOffset(cursorOffset)
-                        setDragPreview({
-                          x: event.clientX - cursorOffset.x,
-                          y: event.clientY - cursorOffset.y,
-                          row,
-                        })
-                      }}
-                      onDrag={(event) => {
-                        if (event.clientX === 0 && event.clientY === 0) {
-                          return
-                        }
-                        setDragPreview((current) =>
-                          current
-                            ? {
-                                ...current,
-                                x: event.clientX - (dragCursorOffset?.x ?? 0),
-                                y: event.clientY - (dragCursorOffset?.y ?? 0),
-                              }
-                            : current
-                        )
-                      }}
-                      onDragEnd={() => {
-                        setDraggingRow(null)
-                        setDragPreview(null)
-                        setDragCursorOffset(null)
-                      }}
-                      onDragOver={(event) => {
-                        event.preventDefault()
-                      }}
-                      onDrop={(event) => {
-                        event.preventDefault()
-                        event.stopPropagation()
-                        moveDroppedCard(event, status, cardIndex)
+                  <div className="py-2 text-sm font-medium">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="inline-flex min-w-0 items-center gap-2 truncate text-lg">
+                        {colorMode === "columns" && statusColor !== "none" ? (
+                          <span
+                            className={`inline-block size-2 shrink-0 rounded-xs ${colorDotClass[statusColor]}`}
+                          />
+                        ) : null}
+                        <span className="truncate text-lg">{statusLabel}</span>
+                      </span>
+                      <Dialog
+                        open={columnSettingsStatus === status}
+                        onOpenChange={(open) => {
+                          setColumnSettingsStatus(open ? status : null)
+                        }}
+                      >
+                        <DialogTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-muted-foreground"
+                            aria-label={`Open settings for ${statusLabel}`}
+                          >
+                            <HugeiconsIcon
+                              icon={MoreVerticalIcon}
+                              className="size-4"
+                            />
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>{statusLabel}</DialogTitle>
+                            <DialogDescription>
+                              Reorder this column or delete it when it has no
+                              cards.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="grid gap-4">
+                            <div className="rounded-xl border border-border bg-muted/30 p-3">
+                              <div className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">
+                                Position
+                              </div>
+                              <div className="mt-1 text-sm text-foreground">
+                                {!status
+                                  ? "This fallback column stays after named statuses."
+                                  : `${statusIndex + 1} of ${orderedStatuses.length}`}
+                              </div>
+                              <div className="mt-3 flex gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="flex-1"
+                                  disabled={!canMoveLeft}
+                                  onClick={() => moveStatus(status, -1)}
+                                >
+                                  <HugeiconsIcon
+                                    icon={ArrowLeft01Icon}
+                                    className="size-4"
+                                  />
+                                  Move left
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="flex-1"
+                                  disabled={!canMoveRight}
+                                  onClick={() => moveStatus(status, 1)}
+                                >
+                                  Move right
+                                  <HugeiconsIcon
+                                    icon={ArrowRight01Icon}
+                                    className="size-4"
+                                  />
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="rounded-xl border border-border bg-muted/30 p-3">
+                              <div className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">
+                                Delete
+                              </div>
+                              <div className="mt-1 text-sm text-muted-foreground">
+                                {canDeleteStatus
+                                  ? "This empty column can be removed."
+                                  : !status
+                                    ? "The fallback column cannot be deleted."
+                                    : "Move or clear all cards here before deleting this column."}
+                              </div>
+                            </div>
+                          </div>
+                          <DialogFooter className="justify-between sm:justify-between">
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              disabled={!canDeleteStatus}
+                              onClick={() => deleteStatus(status, cards)}
+                            >
+                              Delete column
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => setColumnSettingsStatus(null)}
+                            >
+                              Close
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  </div>
+                  <KanbanColumnDropZone status={status} disabled={movingCard}>
+                    <button
+                      type="button"
+                      className="flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-muted px-3 text-sm font-medium text-muted-foreground transition hover:border-foreground/15 hover:text-foreground hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={creatingStatus === status || movingCard}
+                      onClick={() => {
+                        void handleCreateCard(status)
                       }}
                     >
-                      {renderCardBody(row, true)}
-                    </div>
-                  ))}
+                      <HugeiconsIcon icon={Add01Icon} className="size-5" />
+                    </button>
+                    <div
+                      className={`rounded-md border-2 border-dashed transition ${
+                        activeDropSlot?.status === status &&
+                        activeDropSlot.index === 0
+                          ? "border-primary bg-primary/10"
+                          : "border-transparent"
+                      } ${cards.length === 0 ? "min-h-24 flex-1" : "h-3"}`}
+                    />
+                    {cards.map((row, cardIndex) => (
+                      <div key={row} className="flex flex-col gap-2">
+                        <KanbanCardItem
+                          row={row}
+                          status={status}
+                          disabled={movingCard}
+                          renderCardBody={renderCardBody}
+                        />
+                        <div
+                          className={`h-3 rounded-md border-2 border-dashed transition ${
+                            activeDropSlot?.status === status &&
+                            activeDropSlot.index === cardIndex + 1
+                              ? "border-primary bg-primary/10"
+                              : "border-transparent"
+                          }`}
+                        />
+                      </div>
+                    ))}
+                  </KanbanColumnDropZone>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
-      </div>
-      {draggingRow && (
+        <DragOverlay dropAnimation={null}>
+          {() =>
+            activeDrag ? (
+              <div className="w-72 rounded-lg border border-border bg-background/75 p-2 shadow-xl">
+                {renderCardBody(activeDrag.row, false)}
+              </div>
+            ) : null
+          }
+        </DragOverlay>
+      </DragDropProvider>
+      {(activeDrag || movingCard) && (
         <div className="border-t border-border px-4 py-1 text-xs text-muted-foreground">
-          Drag and drop to reorder cards.
+          {movingCard
+            ? "Updating the connected sheet..."
+            : "Drag and drop to reorder cards."}
         </div>
       )}
-      {dragPreview ? (
-        <div
-          className="pointer-events-none fixed z-120 w-72 rounded-lg border border-border bg-background/75 p-2 shadow-xl"
-          style={{
-            left: `${dragPreview.x}px`,
-            top: `${dragPreview.y}px`,
-          }}
-        >
-          {renderCardBody(dragPreview.row, false)}
-        </div>
-      ) : null}
     </div>
   )
 }

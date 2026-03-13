@@ -22,6 +22,7 @@ import {
   resizeSheet as resizeSheetRequest,
   renameSheet as renameSheetRequest,
   saveKanbanRegions as saveKanbanRegionsRequest,
+  saveSheet as saveSheetRequest,
   updateCell as updateCellRequest,
   updateFileSettings,
   uploadWorkbook,
@@ -201,6 +202,7 @@ const EMPTY_CELL: SelectedCell = {
 }
 
 const EMPTY_STYLE: CellStyle = {}
+const EMPTY_KANBAN_STATUS = ""
 
 type PersistedSheetFontsByWorkbook = Record<string, Record<string, string>>
 type KanbanCardColor = "none" | "green" | "red" | "yellow" | "purple"
@@ -217,6 +219,9 @@ const toColumnLabel = (index: number) => {
 }
 
 const toAddress = (row: number, col: number) => `${toColumnLabel(col)}${row}`
+
+const normalizeKanbanStatus = (value: string | null | undefined) =>
+  value?.trim() ?? EMPTY_KANBAN_STATUS
 
 const parseFormulaInput = (value: string) => {
   if (!value.startsWith("=")) {
@@ -2260,6 +2265,28 @@ export const useSheetStore = create<
         }
       }
 
+      try {
+        const fullSheetPayload = await fetchSheet(workbook.id, sheet.name)
+        const mergedFullSheet = mergeSheetWindow(
+          get().sheet,
+          fullSheetPayload.sheet
+        )
+        const allUpdatesPersisted = preparedUpdates.every((update) =>
+          cellMatchesPersistedUpdate(mergedFullSheet, update)
+        )
+        if (allUpdatesPersisted) {
+          set({
+            workbook: fullSheetPayload.workbook,
+            sheet: mergedFullSheet,
+            error: null,
+          })
+          scheduleRefreshFiles(() => get().refreshFiles())
+          return
+        }
+      } catch {
+        // Ignore full-sheet verification failures and surface the original error below.
+      }
+
       const firstError = failures[0]
       set({
         error:
@@ -2998,10 +3025,7 @@ export const useSheetStore = create<
     }
 
     const row = region.range.rowEnd + 1
-    const normalizedStatus =
-      options?.status?.trim() && options.status !== "No status"
-        ? options.status.trim()
-        : ""
+    const normalizedStatus = normalizeKanbanStatus(options?.status)
     const normalizedTitle = options?.title?.trim() || "New card"
 
     set({ error: null })
@@ -3092,24 +3116,38 @@ export const useSheetStore = create<
     if (!allRows.includes(sourceRow)) {
       return
     }
-    const sourceStatus =
-      readCellValue(state.sheet, sourceRow, region.statusCol).trim() ||
-      "No status"
-    const normalizedTargetStatus = targetStatus.trim() || "No status"
+    const sourceStatus = normalizeKanbanStatus(
+      readCellValue(state.sheet, sourceRow, region.statusCol)
+    )
+    const normalizedTargetStatus = normalizeKanbanStatus(targetStatus)
 
-    const order = [
-      ...region.statusOrder,
-      ...Array.from(
-        new Set(
-          allRows
-            .map(
-              (row) =>
-                readCellValue(state.sheet, row, region.statusCol).trim() ||
-                "No status"
+    const configuredStatuses = Array.from(
+      new Set(
+        region.statusOrder
+          .map((status) => normalizeKanbanStatus(status))
+          .filter(Boolean)
+      )
+    )
+    const dataStatuses = Array.from(
+      new Set(
+        allRows
+          .map((row) =>
+            normalizeKanbanStatus(
+              readCellValue(state.sheet, row, region.statusCol)
             )
-            .filter((status) => !region.statusOrder.includes(status))
-        )
-      ),
+          )
+          .filter(Boolean)
+      )
+    )
+    const order = [
+      ...configuredStatuses,
+      ...dataStatuses.filter((status) => !configuredStatuses.includes(status)),
+      ...(!normalizedTargetStatus ||
+      configuredStatuses.includes(normalizedTargetStatus) ||
+      dataStatuses.includes(normalizedTargetStatus)
+        ? []
+        : [normalizedTargetStatus]),
+      EMPTY_KANBAN_STATUS,
     ]
 
     const groups = new Map<string, number[]>()
@@ -3117,8 +3155,9 @@ export const useSheetStore = create<
       groups.set(status, [])
     }
     for (const row of allRows) {
-      const status =
-        readCellValue(state.sheet, row, region.statusCol).trim() || "No status"
+      const status = normalizeKanbanStatus(
+        readCellValue(state.sheet, row, region.statusCol)
+      )
       if (!groups.has(status)) {
         groups.set(status, [])
       }
@@ -3135,8 +3174,19 @@ export const useSheetStore = create<
     const targetGroup = groups.get(normalizedTargetStatus) ?? []
     const nextTargetIndex = Math.max(
       0,
-      Math.min(targetIndex, targetGroup.length)
+      Math.min(
+        sourceStatus === normalizedTargetStatus && targetIndex > sourceAt
+          ? targetIndex - 1
+          : targetIndex,
+        targetGroup.length
+      )
     )
+    if (
+      sourceStatus === normalizedTargetStatus &&
+      nextTargetIndex === sourceAt
+    ) {
+      return
+    }
     targetGroup.splice(nextTargetIndex, 0, sourceRow)
     groups.set(normalizedTargetStatus, targetGroup)
 
@@ -3160,11 +3210,11 @@ export const useSheetStore = create<
     }
     const movedSnapshot = rowSnapshots.get(sourceRow)
     if (movedSnapshot) {
-      movedSnapshot[region.statusCol] =
-        normalizedTargetStatus === "No status" ? "" : normalizedTargetStatus
+      movedSnapshot[region.statusCol] = normalizedTargetStatus
       rowSnapshots.set(sourceRow, movedSnapshot)
     }
 
+    const updates: CellUpdateInput[] = []
     for (let idx = 0; idx < allRows.length; idx += 1) {
       const destRow = allRows[idx]
       const fromRow = finalRows[idx]
@@ -3177,20 +3227,143 @@ export const useSheetStore = create<
         col <= region.range.colEnd;
         col += 1
       ) {
-        await get().updateCell(destRow, col, sourceValues[col] ?? "")
+        const nextValue = sourceValues[col] ?? ""
+        if (readCellValue(state.sheet, destRow, col) === nextValue) {
+          continue
+        }
+        updates.push({
+          row: destRow,
+          col,
+          value: nextValue,
+        })
       }
+    }
+
+    let nextSheet = state.sheet
+    for (const update of updates) {
+      nextSheet =
+        upsertCellLocal(nextSheet, update.row, update.col, {
+          value: update.value,
+          display: update.value,
+          formula: "",
+          type: update.value.trim() ? "string" : "blank",
+        }) ?? nextSheet
+    }
+
+    const nextStatusOrder = Array.from(
+      new Set([...configuredStatuses, ...nextOrder.filter(Boolean)])
+    )
+    const statusOrderChanged =
+      nextStatusOrder.length !== configuredStatuses.length ||
+      nextStatusOrder.some(
+        (status, index) => status !== configuredStatuses[index]
+      )
+
+    const historyEntry = buildHistoryEntryForCoordinates(
+      state.sheet.name,
+      state.sheet,
+      nextSheet,
+      updates.map(({ row, col }) => ({ row, col }))
+    )
+    const selectedCellUpdate = updates.find(
+      (update) =>
+        state.selectedCell.address === toAddress(update.row, update.col)
+    )
+
+    let movePersisted = updates.length === 0
+    if (updates.length > 0) {
+      set({
+        sheet: nextSheet,
+        historyPast: historyEntry
+          ? [...state.historyPast, historyEntry]
+          : state.historyPast,
+        historyFuture: [],
+        selectedCell: selectedCellUpdate
+          ? {
+              ...state.selectedCell,
+              value: selectedCellUpdate.value,
+              formula: "",
+            }
+          : state.selectedCell,
+        selectedStyle: sheetStyleFromSelection(
+          nextSheet,
+          state.selectionMode,
+          state.selectedRow,
+          state.selectedCol,
+          state.selectedRange
+        ),
+        error: null,
+      })
+
+      try {
+        const payload = await saveSheetRequest(state.workbook.id, {
+          sheet: nextSheet,
+        })
+        const latest = get()
+        set({
+          workbook: payload.workbook,
+          sheet: mergeSheetWindow(latest.sheet, payload.sheet),
+          error: null,
+        })
+        movePersisted = true
+        scheduleRefreshFiles(() => get().refreshFiles())
+      } catch (error) {
+        try {
+          const verificationPayload = await fetchSheet(
+            state.workbook.id,
+            state.sheet.name
+          )
+          const verifiedSheet = mergeSheetWindow(
+            get().sheet,
+            verificationPayload.sheet
+          )
+          const allUpdatesPersisted = updates.every(
+            (update) =>
+              readCellValue(verifiedSheet, update.row, update.col) ===
+              update.value
+          )
+          if (allUpdatesPersisted) {
+            set({
+              workbook: verificationPayload.workbook,
+              sheet: verifiedSheet,
+              error: null,
+            })
+            movePersisted = true
+            scheduleRefreshFiles(() => get().refreshFiles())
+          } else {
+            set({
+              workbook: verificationPayload.workbook,
+              sheet: verifiedSheet,
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Failed to persist kanban move",
+            })
+          }
+        } catch {
+          set({
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to persist kanban move",
+          })
+        }
+      }
+    }
+
+    if (!movePersisted) {
+      return
+    }
+
+    if (!statusOrderChanged) {
+      return
     }
 
     const regions = get().kanbanRegions.map((item) =>
       item.id === region.id
         ? {
             ...item,
-            statusOrder: Array.from(
-              new Set([
-                ...item.statusOrder,
-                ...nextOrder.filter((status) => status !== "No status"),
-              ])
-            ),
+            statusOrder: nextStatusOrder,
           }
         : item
     )
