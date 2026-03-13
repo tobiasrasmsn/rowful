@@ -60,6 +60,7 @@ export type KanbanRegion = {
   statusOrder: string[]
   visibleCols: number[]
   cardColorEnabled: boolean
+  cardColorMode: "cards" | "columns"
   cardColorByCol: number
   cardColorMap: Record<string, "none" | "green" | "red" | "yellow" | "purple">
   createdAt: string

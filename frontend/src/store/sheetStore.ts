@@ -156,6 +156,7 @@ type SheetState = {
     regionId: string,
     patch: Partial<{
       cardColorEnabled: boolean
+      cardColorMode: "cards" | "columns"
       cardColorByCol: number
       cardColorMap: Record<
         string,
@@ -410,6 +411,7 @@ const normalizeKanbanRegions = (regions: KanbanRegion[]): KanbanRegion[] =>
           )
         : allCols,
       cardColorEnabled: Boolean(region.cardColorEnabled),
+      cardColorMode: region.cardColorMode === "columns" ? "columns" : "cards",
       cardColorByCol:
         safeColorByCol >= region.range.colStart &&
         safeColorByCol <= region.range.colEnd
@@ -2743,6 +2745,7 @@ export const useSheetStore = create<
         (_, idx) => range.colStart + idx
       ),
       cardColorEnabled: false,
+      cardColorMode: "cards",
       cardColorByCol: defaultKanbanTitleCol(range, statusCol),
       cardColorMap: {},
       createdAt: now,
@@ -2938,6 +2941,12 @@ export const useSheetStore = create<
         typeof patch.cardColorEnabled === "boolean"
           ? patch.cardColorEnabled
           : region.cardColorEnabled
+      const nextColorMode =
+        patch.cardColorMode === "columns"
+          ? "columns"
+          : patch.cardColorMode === "cards"
+            ? "cards"
+            : region.cardColorMode
       const requestedCol =
         typeof patch.cardColorByCol === "number"
           ? patch.cardColorByCol
@@ -2954,6 +2963,7 @@ export const useSheetStore = create<
       return {
         ...region,
         cardColorEnabled: nextEnabled,
+        cardColorMode: nextColorMode,
         cardColorByCol: nextColorByCol,
         cardColorMap: nextColorMap,
       }

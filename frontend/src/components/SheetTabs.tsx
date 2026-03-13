@@ -179,7 +179,7 @@ export function SheetTabs({ className, compact = false }: SheetTabsProps) {
                           (region, index) => (
                             <TabsTrigger
                               className={cn(
-                                "h-full! rounded-t-md rounded-b-none border border-b-0 border-l-0 border-border/70 bg-muted/20 px-3 py-1 text-xs text-muted-foreground shadow-none! data-active:-mb-px data-active:border-border data-active:bg-card data-active:text-foreground",
+                                "h-full overflow-hidden! rounded-t-md rounded-b-none border border-b-0 border-l-0 border-border/70 bg-muted/20 px-3 py-1 text-xs text-muted-foreground shadow-none! data-active:-mb-px data-active:border-border data-active:bg-card data-active:text-foreground",
                                 index !== 0
                                   ? "-translate-x-1 data-active:border-l"
                                   : "rounded-l-none"
@@ -188,7 +188,7 @@ export function SheetTabs({ className, compact = false }: SheetTabsProps) {
                               value={`kanban:${region.id}`}
                               title={`${sheetMeta.name} · ${region.name}`}
                             >
-                              {region.name}
+                              #{region.name}
                             </TabsTrigger>
                           )
                         )}

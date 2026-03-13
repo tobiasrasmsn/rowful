@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Link, useLocation, useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 
 import { AuthShell } from "@/components/auth/AuthShell"
 import { Button } from "@/components/ui/button"
@@ -8,7 +8,6 @@ import { useAuthStore } from "@/store/authStore"
 
 export function LoginPage() {
   const login = useAuthStore((state) => state.login)
-  const bootstrap = useAuthStore((state) => state.bootstrap)
   const navigate = useNavigate()
   const location = useLocation()
   const [email, setEmail] = useState("")

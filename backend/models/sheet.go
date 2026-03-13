@@ -92,6 +92,7 @@ type KanbanRegion struct {
 	StatusOrder      []string          `json:"statusOrder"`
 	VisibleCols      []int             `json:"visibleCols"`
 	CardColorEnabled bool              `json:"cardColorEnabled"`
+	CardColorMode    string            `json:"cardColorMode"`
 	CardColorByCol   int               `json:"cardColorByCol"`
 	CardColorMap     map[string]string `json:"cardColorMap"`
 	CreatedAt        string            `json:"createdAt"`
