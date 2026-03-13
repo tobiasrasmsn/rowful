@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="https://github.com/tobiasrasmsn/rowful.git"
+REPO_URL="https://github.com/tobiasrasmsn/planar.git"
 REPO_BRANCH="main"
-INSTALL_DIR="${PLANAR_INSTALL_DIR:-/opt/rowful}"
+INSTALL_DIR="${PLANAR_INSTALL_DIR:-/opt/planar}"
 
 if ! command -v apt-get >/dev/null 2>&1; then
   echo "Error: This installer supports Ubuntu/Debian systems with apt-get."
