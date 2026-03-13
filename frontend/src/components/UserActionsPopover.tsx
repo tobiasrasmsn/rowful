@@ -1,5 +1,12 @@
 import { useLocation, useNavigate } from "react-router-dom"
-import { CheckIcon, HeartIcon, LeafIcon, MoonIcon, SunIcon } from "lucide-react"
+import {
+  CheckIcon,
+  HeartIcon,
+  LeafIcon,
+  MoonIcon,
+  SproutIcon,
+  SunIcon,
+} from "lucide-react"
 
 import { useAuthStore } from "@/store/authStore"
 import { cn } from "@/lib/utils"
@@ -23,6 +30,7 @@ const THEME_OPTIONS = [
   { value: "dark", label: "Dark", icon: MoonIcon },
   { value: "forrest", label: "Forrest", icon: LeafIcon },
   { value: "blossom", label: "Blossom", icon: HeartIcon },
+  { value: "matcha", label: "Matcha", icon: SproutIcon },
 ] as const
 
 function getInitial(nameOrEmail?: string) {

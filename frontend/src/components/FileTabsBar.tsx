@@ -44,7 +44,9 @@ export function FileTabsBar({
   const title =
     canEditTitle && workbook ? getDisplayFileName(workbook.fileName) : APP_NAME
   const shouldInvertLogo =
-    resolvedTheme === "light" || resolvedTheme === "blossom"
+    resolvedTheme === "light" ||
+    resolvedTheme === "blossom" ||
+    resolvedTheme === "matcha"
 
   const clearSaveTimer = () => {
     if (!saveTimerRef.current || typeof window === "undefined") {

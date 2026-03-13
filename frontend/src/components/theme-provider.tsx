@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
 
-type Theme = "dark" | "light" | "forrest" | "blossom" | "system"
+type Theme = "dark" | "light" | "forrest" | "blossom" | "matcha" | "system"
 type ResolvedTheme = Exclude<Theme, "system">
 
 type ThemeProviderProps = {
@@ -18,7 +18,14 @@ type ThemeProviderState = {
 }
 
 const COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)"
-const THEME_VALUES: Theme[] = ["dark", "light", "forrest", "blossom", "system"]
+const THEME_VALUES: Theme[] = [
+  "dark",
+  "light",
+  "forrest",
+  "blossom",
+  "matcha",
+  "system",
+]
 
 const ThemeProviderContext = React.createContext<
   ThemeProviderState | undefined
@@ -123,7 +130,7 @@ export function ThemeProvider({
         ? disableTransitionsTemporarily()
         : null
 
-      root.classList.remove("light", "dark", "forrest", "blossom")
+      root.classList.remove("light", "dark", "forrest", "blossom", "matcha")
       root.classList.add(resolvedTheme)
       root.style.colorScheme = isDarkResolvedTheme(resolvedTheme)
         ? "dark"
