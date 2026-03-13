@@ -3,7 +3,7 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark *, .forrest *));
 
 :root {
   --background: oklch(0.985 0.002 95.1);
@@ -92,6 +92,94 @@
   --loading-strip-center: oklch(0.72 0.11 244.6 / 0.65);
   --loading-shimmer-start: oklch(0.96 0.004 95.1 / 0);
   --loading-shimmer-center: oklch(0.96 0.004 95.1 / 0.55);
+}
+
+.forrest {
+  --background: oklch(0.2 0.022 160);
+  --foreground: oklch(0.95 0.02 145);
+  --card: oklch(0.24 0.024 160);
+  --card-foreground: oklch(0.95 0.02 145);
+  --popover: oklch(0.245 0.024 160);
+  --popover-foreground: oklch(0.95 0.02 145);
+  --primary: oklch(0.8 0.12 145);
+  --primary-foreground: oklch(0.18 0.02 160);
+  --secondary: oklch(0.295 0.022 160);
+  --secondary-foreground: oklch(0.93 0.02 145);
+  --muted: oklch(0.285 0.018 160);
+  --muted-foreground: oklch(0.76 0.02 145);
+  --accent: oklch(0.38 0.05 150);
+  --accent-foreground: oklch(0.95 0.02 145);
+  --destructive: oklch(0.68 0.16 28.4);
+  --border: oklch(0.35 0.018 160);
+  --input: oklch(0.35 0.018 160);
+  --ring: oklch(0.74 0.1 145);
+  --success: oklch(0.82 0.13 150);
+  --success-foreground: oklch(0.93 0.03 145);
+  --success-soft: oklch(0.43 0.08 150 / 0.28);
+  --warning: oklch(0.82 0.14 92);
+  --warning-foreground: oklch(0.96 0.02 92);
+  --warning-soft: oklch(0.44 0.08 92 / 0.25);
+  --overlay: oklch(0.06 0.01 160 / 0.5);
+  --background-gradient-start: oklch(0.23 0.026 160);
+  --background-gradient-end: oklch(0.16 0.02 160);
+  --auth-glow-primary: oklch(0.74 0.1 145 / 0.2);
+  --auth-glow-secondary: oklch(0.63 0.08 165 / 0.18);
+  --auth-overlay: oklch(0.96 0.004 95.1 / 0.03);
+  --domains-hero-start: oklch(0.74 0.1 145 / 0.18);
+  --domains-hero-end: oklch(0.3 0.024 160 / 0.9);
+  --access-hero-start: oklch(0.82 0.13 150 / 0.16);
+  --access-hero-end: oklch(0.42 0.08 92 / 0.24);
+  --primary-strong: oklch(0.74 0.1 145 / 0.94);
+  --primary-soft: oklch(0.74 0.1 145 / 0.14);
+  --primary-soft-strong: oklch(0.74 0.1 145 / 0.22);
+  --loading-strip-start: oklch(0.74 0.1 145 / 0.35);
+  --loading-strip-center: oklch(0.8 0.12 145 / 0.62);
+  --loading-shimmer-start: oklch(0.95 0.02 145 / 0);
+  --loading-shimmer-center: oklch(0.95 0.02 145 / 0.45);
+}
+
+.blossom {
+  --background: oklch(0.972 0.024 12);
+  --foreground: oklch(0.31 0.06 8);
+  --card: oklch(0.992 0.014 8);
+  --card-foreground: oklch(0.31 0.06 8);
+  --popover: oklch(0.994 0.012 8);
+  --popover-foreground: oklch(0.31 0.06 8);
+  --primary: oklch(0.73 0.17 6);
+  --primary-foreground: oklch(0.99 0.01 12);
+  --secondary: oklch(0.935 0.04 4);
+  --secondary-foreground: oklch(0.37 0.07 8);
+  --muted: oklch(0.95 0.024 10);
+  --muted-foreground: oklch(0.52 0.06 8);
+  --accent: oklch(0.92 0.05 350);
+  --accent-foreground: oklch(0.36 0.07 8);
+  --destructive: oklch(0.62 0.2 24);
+  --border: oklch(0.89 0.03 8);
+  --input: oklch(0.88 0.028 8);
+  --ring: oklch(0.74 0.14 2);
+  --success: oklch(0.71 0.12 155);
+  --success-foreground: oklch(0.29 0.05 155);
+  --success-soft: oklch(0.92 0.04 155);
+  --warning: oklch(0.8 0.13 70);
+  --warning-foreground: oklch(0.38 0.05 70);
+  --warning-soft: oklch(0.95 0.04 70);
+  --overlay: oklch(0.31 0.06 8 / 0.1);
+  --background-gradient-start: oklch(0.985 0.018 12);
+  --background-gradient-end: oklch(0.94 0.03 352);
+  --auth-glow-primary: oklch(0.8 0.13 0 / 0.16);
+  --auth-glow-secondary: oklch(0.87 0.07 330 / 0.18);
+  --auth-overlay: oklch(0.99 0.01 12 / 0.12);
+  --domains-hero-start: oklch(0.82 0.11 356 / 0.22);
+  --domains-hero-end: oklch(0.95 0.03 10 / 0.84);
+  --access-hero-start: oklch(0.74 0.1 155 / 0.14);
+  --access-hero-end: oklch(0.83 0.1 70 / 0.16);
+  --primary-strong: oklch(0.66 0.14 2 / 0.9);
+  --primary-soft: oklch(0.73 0.17 6 / 0.12);
+  --primary-soft-strong: oklch(0.73 0.17 6 / 0.18);
+  --loading-strip-start: oklch(0.73 0.17 6 / 0.35);
+  --loading-strip-center: oklch(0.8 0.13 350 / 0.55);
+  --loading-shimmer-start: oklch(0.99 0.01 12 / 0);
+  --loading-shimmer-center: oklch(0.99 0.01 12 / 0.95);
 }
 
 @theme inline {

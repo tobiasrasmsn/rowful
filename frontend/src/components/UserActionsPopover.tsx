@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom"
-import { MoonIcon, SunIcon } from "lucide-react"
+import { CheckIcon, HeartIcon, LeafIcon, MoonIcon, SunIcon } from "lucide-react"
 
 import { useAuthStore } from "@/store/authStore"
 import { cn } from "@/lib/utils"
@@ -18,6 +18,13 @@ type UserActionsPopoverProps = {
   className?: string
 }
 
+const THEME_OPTIONS = [
+  { value: "light", label: "Light", icon: SunIcon },
+  { value: "dark", label: "Dark", icon: MoonIcon },
+  { value: "forrest", label: "Forrest", icon: LeafIcon },
+  { value: "blossom", label: "Blossom", icon: HeartIcon },
+] as const
+
 function getInitial(nameOrEmail?: string) {
   const trimmed = nameOrEmail?.trim()
   if (!trimmed) {
@@ -29,14 +36,14 @@ function getInitial(nameOrEmail?: string) {
 export function UserActionsPopover({ className }: UserActionsPopoverProps) {
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
-  const { resolvedTheme, setTheme } = useTheme()
+  const { theme, resolvedTheme, setTheme } = useTheme()
   const location = useLocation()
   const navigate = useNavigate()
 
   const isFilesPage = location.pathname.startsWith("/files")
   const isDomainsPage = location.pathname.startsWith("/domains")
   const label = user?.name ?? user?.email
-  const isDarkTheme = resolvedTheme === "dark"
+  const selectedTheme = theme === "system" ? resolvedTheme : theme
 
   return (
     <div className={cn("px-2 py-2", className)}>
@@ -73,23 +80,30 @@ export function UserActionsPopover({ className }: UserActionsPopoverProps) {
             Browse Files
           </Button>
           <Separator className="my-1" />
-          <Button
-            variant="ghost"
-            className="w-full justify-between"
-            onClick={() => setTheme(isDarkTheme ? "light" : "dark")}
-          >
-            <span className="flex items-center gap-2">
-              {isDarkTheme ? (
-                <MoonIcon className="size-4" />
-              ) : (
-                <SunIcon className="size-4" />
-              )}
+          <div className="space-y-1">
+            <p className="px-2 pt-1 text-xs font-medium tracking-[0.12em] text-muted-foreground uppercase">
               Theme
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {isDarkTheme ? "Dark" : "Light"}
-            </span>
-          </Button>
+            </p>
+            {THEME_OPTIONS.map((option) => {
+              const Icon = option.icon
+              const isActive = selectedTheme === option.value
+
+              return (
+                <Button
+                  key={option.value}
+                  variant={isActive ? "secondary" : "ghost"}
+                  className="w-full justify-between"
+                  onClick={() => setTheme(option.value)}
+                >
+                  <span className="flex items-center gap-2">
+                    <Icon className="size-4" />
+                    {option.label}
+                  </span>
+                  {isActive ? <CheckIcon className="size-4" /> : null}
+                </Button>
+              )
+            })}
+          </div>
           <Button
             variant="ghost"
             className="w-full justify-start text-destructive hover:text-destructive"

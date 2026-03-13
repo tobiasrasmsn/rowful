@@ -1,8 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
 
-type Theme = "dark" | "light" | "system"
-type ResolvedTheme = "dark" | "light"
+type Theme = "dark" | "light" | "forrest" | "blossom" | "system"
+type ResolvedTheme = Exclude<Theme, "system">
 
 type ThemeProviderProps = {
   children: React.ReactNode
@@ -18,7 +18,7 @@ type ThemeProviderState = {
 }
 
 const COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)"
-const THEME_VALUES: Theme[] = ["dark", "light", "system"]
+const THEME_VALUES: Theme[] = ["dark", "light", "forrest", "blossom", "system"]
 
 const ThemeProviderContext = React.createContext<
   ThemeProviderState | undefined
@@ -38,6 +38,10 @@ function getSystemTheme(): ResolvedTheme {
   }
 
   return "light"
+}
+
+function isDarkResolvedTheme(theme: ResolvedTheme) {
+  return theme === "dark" || theme === "forrest"
 }
 
 function disableTransitionsTemporarily() {
@@ -119,8 +123,11 @@ export function ThemeProvider({
         ? disableTransitionsTemporarily()
         : null
 
-      root.classList.remove("light", "dark")
+      root.classList.remove("light", "dark", "forrest", "blossom")
       root.classList.add(resolvedTheme)
+      root.style.colorScheme = isDarkResolvedTheme(resolvedTheme)
+        ? "dark"
+        : "light"
       setResolvedTheme(resolvedTheme)
 
       if (restoreTransitions) {
@@ -168,14 +175,11 @@ export function ThemeProvider({
       }
 
       setThemeState((currentTheme) => {
-        const nextTheme =
-          currentTheme === "dark"
-            ? "light"
-            : currentTheme === "light"
-              ? "dark"
-              : getSystemTheme() === "dark"
-                ? "light"
-                : "dark"
+        const currentResolvedTheme =
+          currentTheme === "system" ? getSystemTheme() : currentTheme
+        const nextTheme = isDarkResolvedTheme(currentResolvedTheme)
+          ? "light"
+          : "dark"
 
         localStorage.setItem(storageKey, nextTheme)
         return nextTheme

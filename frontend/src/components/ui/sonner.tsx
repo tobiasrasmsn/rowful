@@ -11,10 +11,14 @@ import { useTheme } from "@/components/theme-provider"
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { resolvedTheme } = useTheme()
+  const toasterTheme =
+    resolvedTheme === "dark" || resolvedTheme === "forrest"
+      ? "dark"
+      : "light"
 
   return (
     <Sonner
-      theme={resolvedTheme as ToasterProps["theme"]}
+      theme={toasterTheme satisfies ToasterProps["theme"]}
       className="toaster group"
       icons={{
         success: <CircleCheckIcon className="size-4" />,

@@ -113,9 +113,13 @@ export function CellFormattingPanel() {
   const applyStyle = useSheetStore((state) => state.applyStyle)
   const setNumberFormat = useSheetStore((state) => state.setNumberFormat)
   const themeColorClassName =
-    resolvedTheme === "dark" ? "dark text-foreground" : "text-foreground"
+    resolvedTheme === "light"
+      ? "text-foreground"
+      : `${resolvedTheme} text-foreground`
   const themeSurfaceClassName =
-    resolvedTheme === "dark" ? "dark bg-background" : "bg-background"
+    resolvedTheme === "light"
+      ? "bg-background"
+      : `${resolvedTheme} bg-background`
   const defaultFontColor = useMemo(
     () => resolveThemeColor(themeColorClassName, "color", FALLBACK_TEXT_COLOR),
     [themeColorClassName]
