@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import { buildRenamedFileName, getDisplayFileName } from "@/lib/fileName"
 import { Input } from "@/components/ui/input"
+import { useTheme } from "@/components/theme-provider"
 import { useSheetStore } from "@/store/sheetStore"
 import { useLocation } from "react-router-dom"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -22,6 +23,7 @@ export function FileTabsBar({
   showLoadingStrip = !compact,
 }: FileTabsBarProps) {
   const location = useLocation()
+  const { resolvedTheme } = useTheme()
   const workbook = useSheetStore((state) => state.workbook)
   const isLoading = useSheetStore((state) => state.isLoading)
   const renameStoredFile = useSheetStore((state) => state.renameStoredFile)
@@ -41,6 +43,8 @@ export function FileTabsBar({
   const isSaving = Boolean(workbook) && savingWorkbookId === workbook?.id
   const title =
     canEditTitle && workbook ? getDisplayFileName(workbook.fileName) : APP_NAME
+  const shouldInvertLogo =
+    resolvedTheme === "light" || resolvedTheme === "blossom"
 
   const clearSaveTimer = () => {
     if (!saveTimerRef.current || typeof window === "undefined") {
@@ -181,7 +185,11 @@ export function FileTabsBar({
     <div className={cn(compact ? "px-0 py-0" : "px-2 py-2", className)}>
       <div className="flex min-w-0 items-center gap-2 px-3 py-2 text-sm text-foreground/90">
         {title === "Rowful" ? (
-          <img src="/logo.png" alt="Rowful Logo" className="size-6" />
+          <img
+            src="/logo.png"
+            alt="Rowful Logo"
+            className={cn("size-6", shouldInvertLogo && "invert")}
+          />
         ) : (
           <HugeiconsIcon icon={FileSpreadsheetIcon} size={18} />
         )}
