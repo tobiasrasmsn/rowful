@@ -16,7 +16,6 @@ type AuthState = {
   status: AuthStatus
   user: AuthUser | null
   bootstrap: AuthBootstrap
-  managedDomainsEnabled: boolean
   isReady: boolean
   initialize: () => Promise<void>
   refreshSession: () => Promise<void>
@@ -40,7 +39,6 @@ export const useAuthStore = create<AuthState>((set) => ({
   status: "loading",
   user: null,
   bootstrap: GUEST_BOOTSTRAP,
-  managedDomainsEnabled: true,
   isReady: false,
 
   initialize: async () => {
@@ -59,7 +57,6 @@ export const useAuthStore = create<AuthState>((set) => ({
           status: "authenticated",
           user: response.user,
           bootstrap: response.bootstrap,
-          managedDomainsEnabled: response.managedDomainsEnabled,
           isReady: true,
         })
         return
@@ -69,7 +66,6 @@ export const useAuthStore = create<AuthState>((set) => ({
         status: "guest",
         user: null,
         bootstrap: response.bootstrap,
-        managedDomainsEnabled: response.managedDomainsEnabled,
         isReady: true,
       })
     } catch {
@@ -78,7 +74,6 @@ export const useAuthStore = create<AuthState>((set) => ({
         status: "guest",
         user: null,
         bootstrap: GUEST_BOOTSTRAP,
-        managedDomainsEnabled: true,
         isReady: true,
       })
     }
@@ -91,7 +86,6 @@ export const useAuthStore = create<AuthState>((set) => ({
       status: "authenticated",
       user: response.user ?? null,
       bootstrap: response.bootstrap,
-      managedDomainsEnabled: response.managedDomainsEnabled,
       isReady: true,
     })
   },
@@ -103,7 +97,6 @@ export const useAuthStore = create<AuthState>((set) => ({
       status: "authenticated",
       user: response.user ?? null,
       bootstrap: response.bootstrap,
-      managedDomainsEnabled: response.managedDomainsEnabled,
       isReady: true,
     })
   },
@@ -111,10 +104,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: async () => {
     try {
       const response = await logoutRequest()
-      set({
-        bootstrap: response.bootstrap,
-        managedDomainsEnabled: response.managedDomainsEnabled,
-      })
+      set({ bootstrap: response.bootstrap })
     } finally {
       applyGuestState()
       set({

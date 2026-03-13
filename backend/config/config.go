@@ -18,8 +18,6 @@ type Config struct {
 	CaddyAdminURL    string
 	CaddyConfigPath  string
 	CaddySitesPath   string
-	Platform         string
-	ManagedDomains   bool
 	ReadTimeout      time.Duration
 	WriteTimeout     time.Duration
 	IdleTimeout      time.Duration
@@ -29,8 +27,6 @@ func Load() Config {
 	port := getEnv("PORT", "8080")
 	maxMB := getEnvInt64("MAX_FILE_SIZE_MB", 25)
 	allowedOrigins := splitCSV(getEnv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"))
-	platform := strings.ToLower(getEnv("PLATFORM", getEnv("ROWFUL_PLATFORM", "")))
-	defaultManagedDomains := platform != "dokploy"
 
 	return Config{
 		Port:             port,
@@ -43,8 +39,6 @@ func Load() Config {
 		CaddyAdminURL:    getEnv("CADDY_ADMIN_URL", "http://caddy:2019"),
 		CaddyConfigPath:  getEnv("CADDY_CONFIG_PATH", "/etc/caddy/Caddyfile"),
 		CaddySitesPath:   getEnv("CADDY_SITES_PATH", "/etc/caddy/sites"),
-		Platform:         platform,
-		ManagedDomains:   getEnvBool("MANAGED_DOMAINS_ENABLED", defaultManagedDomains),
 		ReadTimeout:      getEnvDuration("READ_TIMEOUT", 30*time.Second),
 		WriteTimeout:     getEnvDuration("WRITE_TIMEOUT", 30*time.Second),
 		IdleTimeout:      getEnvDuration("IDLE_TIMEOUT", 60*time.Second),
@@ -81,22 +75,6 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return parsed
-}
-
-func getEnvBool(key string, fallback bool) bool {
-	value := strings.TrimSpace(os.Getenv(key))
-	if value == "" {
-		return fallback
-	}
-
-	switch strings.ToLower(value) {
-	case "1", "true", "yes", "on":
-		return true
-	case "0", "false", "no", "off":
-		return false
-	default:
-		return fallback
-	}
 }
 
 func splitCSV(value string) []string {

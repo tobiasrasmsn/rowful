@@ -43,9 +43,6 @@ function getInitial(nameOrEmail?: string) {
 
 export function UserActionsPopover({ className }: UserActionsPopoverProps) {
   const user = useAuthStore((state) => state.user)
-  const managedDomainsEnabled = useAuthStore(
-    (state) => state.managedDomainsEnabled
-  )
   const logout = useAuthStore((state) => state.logout)
   const { theme, resolvedTheme, setTheme } = useTheme()
   const location = useLocation()
@@ -75,7 +72,7 @@ export function UserActionsPopover({ className }: UserActionsPopoverProps) {
             <p className="text-xs text-muted-foreground">{user?.email}</p>
           </PopoverHeader>
 
-          {user?.isAdmin && managedDomainsEnabled ? (
+          {user?.isAdmin ? (
             <Button
               variant={isDomainsPage ? "secondary" : "ghost"}
               className="w-full justify-start"

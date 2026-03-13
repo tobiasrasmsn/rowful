@@ -16,11 +16,10 @@ type AuthBootstrap struct {
 }
 
 type AuthSessionResponse struct {
-	Authenticated         bool          `json:"authenticated"`
-	User                  *AuthUser     `json:"user,omitempty"`
-	CSRFToken             string        `json:"csrfToken,omitempty"`
-	Bootstrap             AuthBootstrap `json:"bootstrap"`
-	ManagedDomainsEnabled bool          `json:"managedDomainsEnabled"`
+	Authenticated bool          `json:"authenticated"`
+	User          *AuthUser     `json:"user,omitempty"`
+	CSRFToken     string        `json:"csrfToken,omitempty"`
+	Bootstrap     AuthBootstrap `json:"bootstrap"`
 }
 
 type AllowlistEntry struct {
