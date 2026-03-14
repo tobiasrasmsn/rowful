@@ -1026,7 +1026,7 @@ export function FileTabsBar({
         )}
       </div>
       <div className={cn("hidden md:block", !isSheetRoute && "md:hidden")}>
-        <ul className="flex flex-row items-center gap-5 px-3 text-[14px] text-muted-foreground">
+        <ul className="flex -translate-x-1.5 flex-row items-center gap-4 px-3 text-[13px] text-muted-foreground">
           <li>
             <Popover open={fileMenuOpen} onOpenChange={setFileMenuOpen}>
               <PopoverTrigger asChild>

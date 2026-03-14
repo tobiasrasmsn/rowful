@@ -1,4 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  ClipboardPaste,
+  Copy,
+  Ellipsis,
+  Mail,
+  Paintbrush,
+  Plus,
+  Scissors,
+  Trash2,
+} from "lucide-react"
 import { toast } from "sonner"
 import {
   RevoGrid,
@@ -47,6 +57,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 
@@ -710,6 +729,54 @@ const formatCellRangeAddress = (range: {
   return start === end ? start : `${start}:${end}`
 }
 
+const describeSelection = (options: {
+  selectionMode: "cell" | "row" | "column" | "sheet"
+  selectedRow: number
+  selectedCol: number
+  selectedRange: {
+    rowStart: number
+    rowEnd: number
+    colStart: number
+    colEnd: number
+  } | null
+}) => {
+  if (options.selectedRange) {
+    const range = normalizeCellRange(options.selectedRange)
+    const rowCount = range.rowEnd - range.rowStart + 1
+    const colCount = range.colEnd - range.colStart + 1
+    return {
+      title: formatCellRangeAddress(range),
+      detail: `${rowCount} x ${colCount} selection`,
+    }
+  }
+
+  if (options.selectionMode === "row") {
+    return {
+      title: `Row ${options.selectedRow}`,
+      detail: "Entire row selected",
+    }
+  }
+
+  if (options.selectionMode === "column") {
+    return {
+      title: `Column ${toColumnLabel(options.selectedCol)}`,
+      detail: "Entire column selected",
+    }
+  }
+
+  if (options.selectionMode === "sheet") {
+    return {
+      title: "Whole sheet",
+      detail: "All cells selected",
+    }
+  }
+
+  return {
+    title: `${toColumnLabel(options.selectedCol)}${options.selectedRow}`,
+    detail: "Single cell selected",
+  }
+}
+
 const readNumericAttr = (element: Element, names: string[]) => {
   for (const name of names) {
     const raw = element.getAttribute(name)
@@ -1104,6 +1171,7 @@ export function Grid() {
   const clearSelectedValues = useSheetStore(
     (state) => state.clearSelectedValues
   )
+  const clearFormatting = useSheetStore((state) => state.clearFormatting)
   const ensureWindow = useSheetStore((state) => state.ensureWindow)
   const setViewportWindow = useSheetStore((state) => state.setViewportWindow)
   const createKanbanFromSelection = useSheetStore(
@@ -1150,6 +1218,10 @@ export function Grid() {
     width: number
     height: number
   } | null>(null)
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
+  const [mobileDrawerMode, setMobileDrawerMode] = useState<
+    "format" | "actions" | null
+  >(null)
   const clipboardRef = useRef<{
     plainText: string
     payload: ClipboardPayload
@@ -1209,6 +1281,16 @@ export function Grid() {
   const statusColumnIndexes = useMemo(
     () => new Set(kanbanRegionsForSheet.map((region) => region.statusCol)),
     [kanbanRegionsForSheet]
+  )
+  const selectionSummary = useMemo(
+    () =>
+      describeSelection({
+        selectionMode,
+        selectedRow,
+        selectedCol,
+        selectedRange,
+      }),
+    [selectedCol, selectedRange, selectedRow, selectionMode]
   )
 
   const applyViewport = useCallback(
@@ -1346,6 +1428,36 @@ export function Grid() {
       sheet?.maxRow,
     ]
   )
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const mediaQuery = window.matchMedia("(max-width: 767px)")
+    const syncViewport = () => {
+      setIsMobileViewport(mediaQuery.matches)
+    }
+
+    syncViewport()
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", syncViewport)
+      return () => {
+        mediaQuery.removeEventListener("change", syncViewport)
+      }
+    }
+
+    mediaQuery.addListener(syncViewport)
+    return () => {
+      mediaQuery.removeListener(syncViewport)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isMobileViewport) {
+      setMobileDrawerMode(null)
+    }
+  }, [isMobileViewport])
 
   useEffect(() => {
     if (!sheetKey) {
@@ -2035,7 +2147,7 @@ export function Grid() {
       )
     }
     const handleBeforeKeyDown = (event: Event) => {
-      if (sendEmailDialogOpen || extendKanbanDialogOpen) {
+      if (sendEmailDialogOpen || extendKanbanDialogOpen || mobileDrawerMode) {
         return
       }
       const original = (event as CustomEvent<{ original?: KeyboardEvent }>)
@@ -2154,6 +2266,7 @@ export function Grid() {
     handleNavigateToCell,
     handleRowHeaderClick,
     handleSelectAll,
+    mobileDrawerMode,
     openFormattingPopoverAtSelection,
     sendEmailDialogOpen,
     selectedCol,
@@ -2720,30 +2833,35 @@ export function Grid() {
     void createKanbanFromSelection(statusCol, name || undefined)
   }, [createKanbanFromSelection, preparedGridData, selectedRange, sheet])
 
+  const activeMenuContext = useMemo(
+    () => menuContext ?? buildMenuContext(selectedRow, selectedCol),
+    [buildMenuContext, menuContext, selectedCol, selectedRow]
+  )
+
   const activeKanbanRegionAtMenu = useMemo(() => {
-    if (!menuContext) {
+    if (!activeMenuContext) {
       return null
     }
     return (
       kanbanRegionsForSheet.find(
         (region) =>
-          menuContext.row >= region.range.rowStart &&
-          menuContext.row <= region.range.rowEnd &&
-          menuContext.col >= region.range.colStart &&
-          menuContext.col <= region.range.colEnd
+          activeMenuContext.row >= region.range.rowStart &&
+          activeMenuContext.row <= region.range.rowEnd &&
+          activeMenuContext.col >= region.range.colStart &&
+          activeMenuContext.col <= region.range.colEnd
       ) ?? null
     )
-  }, [kanbanRegionsForSheet, menuContext])
+  }, [activeMenuContext, kanbanRegionsForSheet])
 
   const handleCreateCardFromGrid = useCallback(async () => {
-    if (!activeKanbanRegionAtMenu) {
+    if (!activeKanbanRegionAtMenu || !activeMenuContext) {
       return
     }
 
     const nextStatus =
-      menuContext && menuContext.row > activeKanbanRegionAtMenu.range.rowStart
+      activeMenuContext.row > activeKanbanRegionAtMenu.range.rowStart
         ? (preparedGridDataRef.current?.cellMatrix
-            .get(menuContext.row)
+            .get(activeMenuContext.row)
             ?.get(activeKanbanRegionAtMenu.statusCol)?.value ?? "")
         : ""
 
@@ -2753,31 +2871,31 @@ export function Grid() {
     if (row === null) {
       toast.error("Could not create a new card.")
     }
-  }, [activeKanbanRegionAtMenu, createKanbanCard, menuContext])
+  }, [activeKanbanRegionAtMenu, activeMenuContext, createKanbanCard])
 
   const rowEmailTargetAtMenu = useMemo(() => {
-    if (!menuContext || !preparedGridData) {
+    if (!activeMenuContext || !preparedGridData) {
       return null
     }
     const match = findFirstEmailInRow(
-      preparedGridData.cellMatrix.get(menuContext.row)
+      preparedGridData.cellMatrix.get(activeMenuContext.row)
     )
     if (!match) {
       return null
     }
     return {
       email: match.email,
-      row: menuContext.row,
-      vars: collectSnippetVarsForRow(preparedGridData, menuContext.row, {
+      row: activeMenuContext.row,
+      vars: collectSnippetVarsForRow(preparedGridData, activeMenuContext.row, {
         headerRowIndex: findTopContentRowInColumns(preparedGridData, {
-          colStart: menuContext.colStart,
-          colEnd: menuContext.colStart + menuContext.colCount - 1,
+          colStart: activeMenuContext.colStart,
+          colEnd: activeMenuContext.colStart + activeMenuContext.colCount - 1,
         }),
-        colStart: menuContext.colStart,
-        colEnd: menuContext.colStart + menuContext.colCount - 1,
+        colStart: activeMenuContext.colStart,
+        colEnd: activeMenuContext.colStart + activeMenuContext.colCount - 1,
       }),
     } satisfies EmailSendTarget
-  }, [menuContext, preparedGridData])
+  }, [activeMenuContext, preparedGridData])
 
   const selectedEmailTargets = useMemo(() => {
     if (!selectedRange || !preparedGridData) {
@@ -2799,6 +2917,31 @@ export function Grid() {
   const snippetChoices = useMemo(
     () => buildSnippetChoices(sendEmailTargets),
     [sendEmailTargets]
+  )
+
+  const openSendEmailComposer = useCallback(() => {
+    if (emailTargetsAtMenu.length === 0) {
+      return
+    }
+    setSendEmailTargets(emailTargetsAtMenu)
+    setSendEmailSubject("Message from Rowful")
+    setSendEmailMessage("")
+    setSendEmailDialogOpen(true)
+    setMobileDrawerMode(null)
+  }, [emailTargetsAtMenu])
+
+  const openExtendKanbanSheetDialog = useCallback(
+    (axis: "rows" | "cols") => {
+      if (!activeKanbanRegionAtMenu) {
+        return
+      }
+      setExtendKanbanRegionId(activeKanbanRegionAtMenu.id)
+      setExtendKanbanAxis(axis)
+      setExtendKanbanAmount("1")
+      setExtendKanbanDialogOpen(true)
+      setMobileDrawerMode(null)
+    },
+    [activeKanbanRegionAtMenu]
   )
 
   const insertSnippetAtCursor = useCallback(
@@ -3121,7 +3264,11 @@ export function Grid() {
                   scheduleViewportSync()
                 }}
                 onBeforefocuslost={(event) => {
-                  if (!sendEmailDialogOpen && !extendKanbanDialogOpen) {
+                  if (
+                    !sendEmailDialogOpen &&
+                    !extendKanbanDialogOpen &&
+                    !mobileDrawerMode
+                  ) {
                     event.preventDefault()
                   }
                 }}
@@ -3145,14 +3292,7 @@ export function Grid() {
               ) : null}
               {emailTargetsAtMenu.length > 0 ? (
                 <>
-                  <ContextMenuItem
-                    onSelect={() => {
-                      setSendEmailTargets(emailTargetsAtMenu)
-                      setSendEmailSubject("Message from Rowful")
-                      setSendEmailMessage("")
-                      setSendEmailDialogOpen(true)
-                    }}
-                  >
+                  <ContextMenuItem onSelect={openSendEmailComposer}>
                     Send Email
                     {emailTargetsAtMenu.length > 1
                       ? ` (${emailTargetsAtMenu.length})`
@@ -3237,20 +3377,14 @@ export function Grid() {
                   </ContextMenuItem>
                   <ContextMenuItem
                     onSelect={() => {
-                      setExtendKanbanRegionId(activeKanbanRegionAtMenu.id)
-                      setExtendKanbanAxis("rows")
-                      setExtendKanbanAmount("1")
-                      setExtendKanbanDialogOpen(true)
+                      openExtendKanbanSheetDialog("rows")
                     }}
                   >
                     Extend Kanban Rows
                   </ContextMenuItem>
                   <ContextMenuItem
                     onSelect={() => {
-                      setExtendKanbanRegionId(activeKanbanRegionAtMenu.id)
-                      setExtendKanbanAxis("cols")
-                      setExtendKanbanAmount("1")
-                      setExtendKanbanDialogOpen(true)
+                      openExtendKanbanSheetDialog("cols")
                     }}
                   >
                     Extend Kanban Columns
@@ -3266,6 +3400,281 @@ export function Grid() {
           </PopoverContent>
         ) : null}
       </Popover>
+      {isMobileViewport ? (
+        <div
+          className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-3 sm:hidden"
+          style={{
+            paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)",
+          }}
+        >
+          <div className="pointer-events-auto mx-auto max-w-xs rounded-xl border border-border/80 bg-background/95 p-1.5 shadow-[0_-6px_18px_rgba(15,23,42,0.08)] backdrop-blur">
+            <div className="grid grid-cols-5 gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-10 rounded-lg px-0"
+                aria-label="Cut"
+                title="Cut"
+                onClick={() => {
+                  void handleCut()
+                }}
+              >
+                <Scissors className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-10 rounded-lg px-0"
+                aria-label="Copy"
+                title="Copy"
+                onClick={() => {
+                  void handleCopy()
+                }}
+              >
+                <Copy className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-10 rounded-lg px-0"
+                aria-label="Paste"
+                title="Paste"
+                onClick={() => {
+                  void handlePasteAt(activeMenuContext.row, activeMenuContext.col)
+                }}
+              >
+                <ClipboardPaste className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-10 rounded-lg px-0"
+                aria-label="Format"
+                title="Format"
+                onClick={() => setMobileDrawerMode("format")}
+              >
+                <Paintbrush className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-10 rounded-lg px-0"
+                aria-label="More actions"
+                title="More actions"
+                onClick={() => setMobileDrawerMode("actions")}
+              >
+                <Ellipsis className="size-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      <Drawer
+        open={mobileDrawerMode !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setMobileDrawerMode(null)
+          }
+        }}
+      >
+        <DrawerContent>
+          {mobileDrawerMode === "format" ? (
+            <>
+              <DrawerHeader>
+                <DrawerTitle>Format {selectionSummary.title}</DrawerTitle>
+                <DrawerDescription>
+                  Adjust number format, type, color, and alignment for the
+                  current selection.
+                </DrawerDescription>
+              </DrawerHeader>
+              <div className="max-h-[58vh] overflow-y-auto border-y border-border">
+                <CellFormattingPanel />
+              </div>
+              <DrawerFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    void clearFormatting()
+                    setMobileDrawerMode(null)
+                  }}
+                >
+                  <Trash2 className="size-4" />
+                  Clear Formatting
+                </Button>
+                <DrawerClose asChild>
+                  <Button type="button" variant="ghost">
+                    Done
+                  </Button>
+                </DrawerClose>
+              </DrawerFooter>
+            </>
+          ) : mobileDrawerMode === "actions" ? (
+            <>
+              <DrawerHeader>
+                <DrawerTitle>{selectionSummary.title}</DrawerTitle>
+                <DrawerDescription>
+                  {selectionSummary.detail}. Extra actions that replace the
+                  desktop context menu on touch screens.
+                </DrawerDescription>
+              </DrawerHeader>
+              <div className="grid max-h-[58vh] gap-2 overflow-y-auto px-4 pb-2">
+                {selectedRange ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      handleCreateKanban()
+                      setMobileDrawerMode(null)
+                    }}
+                  >
+                    <Plus className="size-4" />
+                    Create Kanban
+                  </Button>
+                ) : null}
+                {emailTargetsAtMenu.length > 0 ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-start"
+                    onClick={openSendEmailComposer}
+                  >
+                    <Mail className="size-4" />
+                    Send Email
+                    {emailTargetsAtMenu.length > 1
+                      ? ` (${emailTargetsAtMenu.length})`
+                      : ""}
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    void insertRowsAt(
+                      activeMenuContext.rowStart,
+                      activeMenuContext.rowCount
+                    )
+                    setMobileDrawerMode(null)
+                  }}
+                >
+                  <Plus className="size-4" />
+                  Insert {activeMenuContext.rowCount} row
+                  {activeMenuContext.rowCount > 1 ? "s" : ""} above
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    void insertColsAt(
+                      activeMenuContext.colStart,
+                      activeMenuContext.colCount
+                    )
+                    setMobileDrawerMode(null)
+                  }}
+                >
+                  <Plus className="size-4" />
+                  Insert {activeMenuContext.colCount} column
+                  {activeMenuContext.colCount > 1 ? "s" : ""} left
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    void deleteRowsAt(
+                      activeMenuContext.rowStart,
+                      activeMenuContext.rowCount
+                    )
+                    setMobileDrawerMode(null)
+                  }}
+                >
+                  <Trash2 className="size-4" />
+                  Delete row
+                  {activeMenuContext.rowCount > 1 ? "s" : ""}{" "}
+                  {activeMenuContext.rowStart}
+                  {activeMenuContext.rowCount > 1
+                    ? `-${activeMenuContext.rowStart + activeMenuContext.rowCount - 1}`
+                    : ""}
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    void deleteColsAt(
+                      activeMenuContext.colStart,
+                      activeMenuContext.colCount
+                    )
+                    setMobileDrawerMode(null)
+                  }}
+                >
+                  <Trash2 className="size-4" />
+                  Delete column
+                  {activeMenuContext.colCount > 1 ? "s" : ""}{" "}
+                  {toColumnLabel(activeMenuContext.colStart)}
+                  {activeMenuContext.colCount > 1
+                    ? `-${toColumnLabel(activeMenuContext.colStart + activeMenuContext.colCount - 1)}`
+                    : ""}
+                </Button>
+                {activeKanbanRegionAtMenu ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={() => {
+                        void handleCreateCardFromGrid()
+                        setMobileDrawerMode(null)
+                      }}
+                    >
+                      <Plus className="size-4" />
+                      Add Kanban Card
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={() => {
+                        openExtendKanbanSheetDialog("rows")
+                      }}
+                    >
+                      <Plus className="size-4" />
+                      Extend Kanban Rows
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={() => {
+                        openExtendKanbanSheetDialog("cols")
+                      }}
+                    >
+                      <Plus className="size-4" />
+                      Extend Kanban Columns
+                    </Button>
+                  </>
+                ) : null}
+              </div>
+              <DrawerFooter>
+                <DrawerClose asChild>
+                  <Button type="button" variant="ghost">
+                    Close
+                  </Button>
+                </DrawerClose>
+              </DrawerFooter>
+            </>
+          ) : null}
+        </DrawerContent>
+      </Drawer>
       <Dialog
         open={extendKanbanDialogOpen}
         onOpenChange={setExtendKanbanDialogOpen}
