@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
+  Check,
   ClipboardPaste,
   Copy,
   Ellipsis,
@@ -199,6 +200,7 @@ const FALLBACK_FORMATTING_MENU_SHORTCUT_LABEL = "Ctrl/Cmd+Shift+F"
 const MIN_GRID_FONT_SIZE = 8
 const MIN_GRID_ROW_HEIGHT = 18
 const MIN_GRID_HEADER_HEIGHT = 24
+const MOBILE_DOCK_FEEDBACK_DURATION_MS = 1800
 
 const toColumnLabel = (index: number) => {
   let label = ""
@@ -1222,10 +1224,14 @@ export function Grid() {
   const [mobileDrawerMode, setMobileDrawerMode] = useState<
     "format" | "actions" | null
   >(null)
+  const [mobileDockFeedback, setMobileDockFeedback] = useState<
+    "copy" | "paste" | "cut" | null
+  >(null)
   const clipboardRef = useRef<{
     plainText: string
     payload: ClipboardPayload
   } | null>(null)
+  const mobileDockFeedbackTimeoutRef = useRef<number | null>(null)
   const dragMoveStateRef = useRef<DragMoveState | null>(null)
   const dragHandleRangeRef = useRef<{
     rowStart: number
@@ -1456,8 +1462,17 @@ export function Grid() {
   useEffect(() => {
     if (!isMobileViewport) {
       setMobileDrawerMode(null)
+      setMobileDockFeedback(null)
     }
   }, [isMobileViewport])
+
+  useEffect(() => {
+    return () => {
+      if (mobileDockFeedbackTimeoutRef.current !== null) {
+        window.clearTimeout(mobileDockFeedbackTimeoutRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!sheetKey) {
@@ -2559,6 +2574,20 @@ export function Grid() {
     [applyClipboardPayload, getActiveSelectionRange]
   )
 
+  const showMobileDockFeedback = useCallback(
+    (action: "copy" | "paste" | "cut") => {
+    setMobileDockFeedback(action)
+    if (mobileDockFeedbackTimeoutRef.current !== null) {
+      window.clearTimeout(mobileDockFeedbackTimeoutRef.current)
+    }
+    mobileDockFeedbackTimeoutRef.current = window.setTimeout(() => {
+      setMobileDockFeedback((current) => (current === action ? null : current))
+      mobileDockFeedbackTimeoutRef.current = null
+    }, MOBILE_DOCK_FEEDBACK_DURATION_MS)
+    },
+    []
+  )
+
   const findMatches = useMemo(() => {
     const query = search.trim().toLowerCase()
     if (!query || !preparedGridData) {
@@ -3417,10 +3446,17 @@ export function Grid() {
                 aria-label="Cut"
                 title="Cut"
                 onClick={() => {
-                  void handleCut()
+                  void (async () => {
+                    await handleCut()
+                    showMobileDockFeedback("cut")
+                  })()
                 }}
               >
-                <Scissors className="size-4" />
+                {mobileDockFeedback === "cut" ? (
+                  <Check className="size-4" />
+                ) : (
+                  <Scissors className="size-4" />
+                )}
               </Button>
               <Button
                 type="button"
@@ -3430,10 +3466,17 @@ export function Grid() {
                 aria-label="Copy"
                 title="Copy"
                 onClick={() => {
-                  void handleCopy()
+                  void (async () => {
+                    await handleCopy()
+                    showMobileDockFeedback("copy")
+                  })()
                 }}
               >
-                <Copy className="size-4" />
+                {mobileDockFeedback === "copy" ? (
+                  <Check className="size-4" />
+                ) : (
+                  <Copy className="size-4" />
+                )}
               </Button>
               <Button
                 type="button"
@@ -3443,10 +3486,20 @@ export function Grid() {
                 aria-label="Paste"
                 title="Paste"
                 onClick={() => {
-                  void handlePasteAt(activeMenuContext.row, activeMenuContext.col)
+                  void (async () => {
+                    await handlePasteAt(
+                      activeMenuContext.row,
+                      activeMenuContext.col
+                    )
+                    showMobileDockFeedback("paste")
+                  })()
                 }}
               >
-                <ClipboardPaste className="size-4" />
+                {mobileDockFeedback === "paste" ? (
+                  <Check className="size-4" />
+                ) : (
+                  <ClipboardPaste className="size-4" />
+                )}
               </Button>
               <Button
                 type="button"
