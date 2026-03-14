@@ -1022,7 +1022,7 @@ export function FileTabsBar({
           </span>
         )}
       </div>
-      <div>
+      <div className="hidden md:block">
         <ul className="flex flex-row items-center gap-5 px-3 text-[14px] text-muted-foreground">
           <li>
             <Popover open={fileMenuOpen} onOpenChange={setFileMenuOpen}>
