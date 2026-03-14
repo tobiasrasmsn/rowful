@@ -72,7 +72,7 @@ func parseSheet(xlsx *excelize.File, resolver *styleResolver, sheetName string, 
 				Value:   rawValue,
 				Display: displayValue,
 				Formula: formula,
-				Style:   resolver.Resolve(sheetName, cellName),
+				Style:   normalizeImportedCellStyle(resolver.Resolve(sheetName, cellName)),
 			}
 
 			cells = append(cells, cell)
@@ -110,6 +110,23 @@ func parseSheet(xlsx *excelize.File, resolver *styleResolver, sheetName string, 
 		MaxCol: maxCol,
 		Rows:   rows,
 	}, nil
+}
+
+func normalizeImportedCellStyle(style *models.CellStyle) *models.CellStyle {
+	if style == nil {
+		return &models.CellStyle{Overflow: "clip"}
+	}
+
+	normalized := *style
+	if normalized.WrapText {
+		if normalized.Overflow == "" {
+			normalized.Overflow = "wrap"
+		}
+	} else if normalized.Overflow == "" {
+		normalized.Overflow = "clip"
+	}
+
+	return &normalized
 }
 
 func ReadWorkbookDimensionsFromFile(filePath string) (map[string]models.SheetMeta, error) {
