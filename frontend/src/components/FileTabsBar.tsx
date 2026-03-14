@@ -818,7 +818,9 @@ export function FileTabsBar({
       closeFormatMenus()
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to update number format"
+        error instanceof Error
+          ? error.message
+          : "Failed to update number format"
       )
     }
   }
@@ -1030,7 +1032,7 @@ export function FileTabsBar({
               <PopoverTrigger asChild>
                 <button
                   type="button"
-                  className="transition-colors duration-200 hover:text-foreground"
+                  className="h-fit rounded-md px-2 py-px transition-colors duration-200 hover:bg-muted hover:text-foreground"
                 >
                   File
                 </button>
@@ -1187,7 +1189,7 @@ export function FileTabsBar({
                 <button
                   type="button"
                   disabled={editMenuDisabled}
-                  className="transition-colors duration-200 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-fit rounded-md px-2 py-px transition-colors duration-200 hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Edit
                 </button>
@@ -1275,7 +1277,7 @@ export function FileTabsBar({
                 <button
                   type="button"
                   disabled={viewMenuDisabled}
-                  className="transition-colors duration-200 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-fit rounded-md px-2 py-px transition-colors duration-200 hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   View
                 </button>
@@ -1419,7 +1421,7 @@ export function FileTabsBar({
                 <button
                   type="button"
                   disabled={insertMenuDisabled}
-                  className="transition-colors duration-200 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-fit rounded-md px-2 py-px transition-colors duration-200 hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Insert
                 </button>
@@ -1592,7 +1594,7 @@ export function FileTabsBar({
                 <button
                   type="button"
                   disabled={formatMenuDisabled}
-                  className="transition-colors duration-200 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-fit rounded-md px-2 py-px transition-colors duration-200 hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Format
                 </button>
@@ -1624,7 +1626,9 @@ export function FileTabsBar({
                           <button
                             key={option.value}
                             type="button"
-                            onClick={() => void handleSetNumberFormat(option.value)}
+                            onClick={() =>
+                              void handleSetNumberFormat(option.value)
+                            }
                             className={MENU_ITEM_CLASSNAME}
                           >
                             <span>{option.label}</span>
@@ -1657,7 +1661,9 @@ export function FileTabsBar({
                         <button
                           type="button"
                           onClick={() =>
-                            void handleApplyTextStyle({ bold: !selectedStyle.bold })
+                            void handleApplyTextStyle({
+                              bold: !selectedStyle.bold,
+                            })
                           }
                           className={MENU_ITEM_CLASSNAME}
                         >
@@ -1725,7 +1731,9 @@ export function FileTabsBar({
                           <button
                             key={option.value}
                             type="button"
-                            onClick={() => void handleSetAlignment(option.value)}
+                            onClick={() =>
+                              void handleSetAlignment(option.value)
+                            }
                             className={MENU_ITEM_CLASSNAME}
                           >
                             <span>{option.label}</span>
