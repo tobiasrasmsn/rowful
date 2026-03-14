@@ -219,6 +219,7 @@ export function FileTabsBar({
   const refreshFiles = useSheetStore((state) => state.refreshFiles)
   const refreshRecentFiles = useSheetStore((state) => state.refreshRecentFiles)
   const isFilesRoute = location.pathname === "/files"
+  const isSheetRoute = location.pathname.startsWith("/sheet/")
   const inputRef = useRef<HTMLInputElement | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1022,7 +1023,7 @@ export function FileTabsBar({
           </span>
         )}
       </div>
-      <div className="hidden md:block">
+      <div className={cn("hidden md:block", !isSheetRoute && "md:hidden")}>
         <ul className="flex flex-row items-center gap-5 px-3 text-[14px] text-muted-foreground">
           <li>
             <Popover open={fileMenuOpen} onOpenChange={setFileMenuOpen}>
