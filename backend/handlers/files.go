@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"crypto/sha256"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -244,6 +246,35 @@ func (h FilesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (h FilesHandler) Download(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing file id"})
+		return
+	}
+	user, ok := CurrentUser(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, models.ErrorResponse{Error: "authentication required"})
+		return
+	}
+
+	workbook, sheets, err := h.storage.GetWorkbookByIDForUser(user.ID, id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "file not found"})
+		return
+	}
+
+	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+	switch format {
+	case "csv":
+		h.downloadCSV(w, workbook, sheets, r.URL.Query().Get("sheet"))
+	case "xlsx":
+		h.downloadXLSX(w, workbook)
+	default:
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "format must be xlsx or csv"})
+	}
+}
+
 func (h FilesHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -265,6 +296,160 @@ func (h FilesHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, models.FileSettingsResponse{Settings: settings})
+}
+
+func (h FilesHandler) downloadCSV(
+	w http.ResponseWriter,
+	workbook models.Workbook,
+	sheets map[string]models.Sheet,
+	requestedSheet string,
+) {
+	sheetName := strings.TrimSpace(requestedSheet)
+	if sheetName == "" {
+		sheetName = workbook.ActiveSheet
+	}
+	if _, exists := sheets[sheetName]; !exists {
+		if len(workbook.Sheets) == 0 {
+			writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "workbook has no sheets"})
+			return
+		}
+		sheetName = workbook.Sheets[0].Name
+	}
+
+	sheet, err := h.storage.GetSheet(workbook.ID, sheetName)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load sheet for csv export"})
+		return
+	}
+
+	fileName := buildDownloadName(workbook.FileName, sheetName, "csv")
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+fileName+`"`)
+
+	writer := csv.NewWriter(w)
+	for rowIndex := 1; rowIndex <= max(1, sheet.MaxRow); rowIndex++ {
+		record := make([]string, max(1, sheet.MaxCol))
+		for _, row := range sheet.Rows {
+			if row.Index != rowIndex {
+				continue
+			}
+			for _, cell := range row.Cells {
+				if cell.Col < 1 || cell.Col > len(record) {
+					continue
+				}
+				if cell.Display != "" {
+					record[cell.Col-1] = cell.Display
+					continue
+				}
+				record[cell.Col-1] = cell.Value
+			}
+			break
+		}
+		if err := writer.Write(record); err != nil {
+			return
+		}
+	}
+	writer.Flush()
+}
+
+func (h FilesHandler) downloadXLSX(w http.ResponseWriter, workbook models.Workbook) {
+	if len(workbook.Sheets) == 0 {
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "workbook has no sheets"})
+		return
+	}
+
+	xlsx := excelize.NewFile()
+	defaultSheet := xlsx.GetSheetName(0)
+
+	for index, meta := range workbook.Sheets {
+		sheet, err := h.storage.GetSheet(workbook.ID, meta.Name)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load workbook for xlsx export"})
+			_ = xlsx.Close()
+			return
+		}
+
+		if index == 0 {
+			if meta.Name != defaultSheet {
+				xlsx.SetSheetName(defaultSheet, meta.Name)
+			}
+		} else {
+			xlsx.NewSheet(meta.Name)
+		}
+
+		for _, row := range sheet.Rows {
+			for _, cell := range row.Cells {
+				cellRef, coordErr := excelize.CoordinatesToCellName(cell.Col, cell.Row)
+				if coordErr != nil {
+					continue
+				}
+				if cell.Formula != "" {
+					if err := xlsx.SetCellFormula(meta.Name, cellRef, cell.Formula); err != nil {
+						writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to write xlsx formula"})
+						_ = xlsx.Close()
+						return
+					}
+					continue
+				}
+				if err := setExcelCellValue(xlsx, meta.Name, cellRef, cell); err != nil {
+					writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to write xlsx cell"})
+					_ = xlsx.Close()
+					return
+				}
+			}
+		}
+	}
+
+	activeIndex := 0
+	for index, meta := range workbook.Sheets {
+		if meta.Name == workbook.ActiveSheet {
+			activeIndex = index
+			break
+		}
+	}
+	xlsx.SetActiveSheet(activeIndex)
+
+	buffer, err := xlsx.WriteToBuffer()
+	_ = xlsx.Close()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to build xlsx download"})
+		return
+	}
+
+	fileName := buildDownloadName(workbook.FileName, "", "xlsx")
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+fileName+`"`)
+	_, _ = w.Write(buffer.Bytes())
+}
+
+func setExcelCellValue(file *excelize.File, sheetName, cellRef string, cell models.Cell) error {
+	switch cell.Type {
+	case "boolean":
+		lower := strings.ToLower(strings.TrimSpace(cell.Value))
+		return file.SetCellValue(sheetName, cellRef, lower == "true")
+	case "number", "formatted":
+		if value, err := strconv.ParseInt(cell.Value, 10, 64); err == nil {
+			return file.SetCellValue(sheetName, cellRef, value)
+		}
+		if value, err := strconv.ParseFloat(cell.Value, 64); err == nil {
+			return file.SetCellValue(sheetName, cellRef, value)
+		}
+		return file.SetCellValue(sheetName, cellRef, cell.Value)
+	default:
+		return file.SetCellValue(sheetName, cellRef, cell.Value)
+	}
+}
+
+func buildDownloadName(fileName, sheetName, ext string) string {
+	base := strings.TrimSpace(fileName)
+	if base == "" {
+		base = "Untitled.xlsx"
+	}
+	base = strings.TrimSuffix(base, filepath.Ext(base))
+	if sheetName != "" {
+		base += "-" + strings.ReplaceAll(sheetName, "/", "-")
+	}
+	return base + "." + ext
 }
 
 func (h FilesHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {

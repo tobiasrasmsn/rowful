@@ -31,3 +31,16 @@ export const buildRenamedFileName = (currentFileName: string, nextBaseName: stri
   const { extension } = splitFileName(currentFileName)
   return `${trimmedBaseName}${extension}`
 }
+
+const padTimestampPart = (value: number) => value.toString().padStart(2, "0")
+
+export const buildUntitledSpreadsheetName = (date = new Date()) => {
+  const year = date.getFullYear()
+  const month = padTimestampPart(date.getMonth() + 1)
+  const day = padTimestampPart(date.getDate())
+  const hours = padTimestampPart(date.getHours())
+  const minutes = padTimestampPart(date.getMinutes())
+  const seconds = padTimestampPart(date.getSeconds())
+
+  return `Untitled spreadsheet ${year}-${month}-${day} ${hours}.${minutes}.${seconds}`
+}

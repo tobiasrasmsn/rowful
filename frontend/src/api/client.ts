@@ -535,6 +535,37 @@ export async function removeFile(fileId: string): Promise<{ status: string }> {
   return parseJson<{ status: string }>(response)
 }
 
+export async function downloadFileBlob(
+  fileId: string,
+  options: { format: "xlsx" | "csv"; sheet?: string }
+): Promise<Blob> {
+  const params = new URLSearchParams({ format: options.format })
+  if (options.sheet) {
+    params.set("sheet", options.sheet)
+  }
+
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/files/${fileId}/download?${params.toString()}`,
+    undefined,
+    { includeCSRF: false }
+  )
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") ?? ""
+    if (contentType.toLowerCase().includes("application/json")) {
+      const payload = (await response.json()) as { error?: unknown }
+      const message =
+        typeof payload.error === "string" && payload.error.length > 0
+          ? payload.error
+          : `Request failed (HTTP ${response.status})`
+      throw new Error(message)
+    }
+    throw new Error(`Request failed (HTTP ${response.status})`)
+  }
+
+  return response.blob()
+}
+
 export async function fetchFileSettings(
   fileId: string
 ): Promise<FileSettingsResponse> {

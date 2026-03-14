@@ -399,20 +399,25 @@
   font-size: var(--rowful-grid-font-size, 12px);
 }
 
+.sheet-grid.hide-grid-lines revo-grid {
+  --revo-grid-cell-border: transparent;
+  --revo-grid-header-border: transparent;
+}
+
 .sheet-grid revo-grid[theme="compact"] revogr-data .rgRow {
   line-height: var(--rowful-grid-row-height, 28px);
 }
 
 .sheet-grid revo-grid[theme="compact"] revogr-header {
-  line-height: 34px;
+  line-height: var(--rowful-grid-header-height, 34px);
 }
 
 .sheet-grid revo-grid[theme="compact"] revogr-header .header-rgRow {
-  height: 34px;
+  height: var(--rowful-grid-header-height, 34px);
 }
 
 .sheet-grid revo-grid[theme="compact"] revogr-header .rgHeaderCell {
-  height: 34px;
+  height: var(--rowful-grid-header-height, 34px);
 }
 
 .sheet-grid revogr-data .rgCell {

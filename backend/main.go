@@ -88,6 +88,7 @@ func main() {
 			private.Patch("/email-profiles/{id}", emailProfilesHandler.Update)
 			private.Delete("/email-profiles/{id}", emailProfilesHandler.Delete)
 			private.Post("/files/{id}/open", filesHandler.Open)
+			private.Get("/files/{id}/download", filesHandler.Download)
 			private.Get("/files/{id}/settings", filesHandler.GetSettings)
 			private.Patch("/files/{id}/settings", filesHandler.UpdateSettings)
 			private.Post("/files/{id}/email/send", filesHandler.SendEmail)

@@ -2,7 +2,11 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
 import { useNavigate } from "react-router-dom"
 
 import { useSheetStore } from "@/store/sheetStore"
-import { buildRenamedFileName, getDisplayFileName } from "@/lib/fileName"
+import {
+  buildRenamedFileName,
+  buildUntitledSpreadsheetName,
+  getDisplayFileName,
+} from "@/lib/fileName"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -34,8 +38,6 @@ export function FilesBrowser() {
   const deleteStoredFile = useSheetStore((state) => state.deleteStoredFile)
   const navigate = useNavigate()
 
-  const [createOpen, setCreateOpen] = useState(false)
-  const [createName, setCreateName] = useState("")
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [activeFileID, setActiveFileID] = useState("")
@@ -71,8 +73,17 @@ export function FilesBrowser() {
     if (isCreating) {
       return
     }
-    setCreateName("")
-    setCreateOpen(true)
+    setIsCreating(true)
+    void (async () => {
+      try {
+        const createdWorkbook = await createWorkbook(buildUntitledSpreadsheetName())
+        if (createdWorkbook) {
+          navigate(`/sheet/${createdWorkbook.id}`)
+        }
+      } finally {
+        setIsCreating(false)
+      }
+    })()
   }
 
   const onFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -187,53 +198,6 @@ export function FilesBrowser() {
           </table>
         </div>
       </div>
-
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create File</DialogTitle>
-            <DialogDescription>
-              Create a blank workbook without importing an existing spreadsheet.
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            value={createName}
-            onChange={(event) => setCreateName(event.target.value)}
-            placeholder="Untitled"
-          />
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setCreateOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              disabled={isCreating}
-              onClick={async () => {
-                if (isCreating) {
-                  return
-                }
-                setIsCreating(true)
-                try {
-                  await createWorkbook(createName)
-                  const workbookID = useSheetStore.getState().workbook?.id
-                  if (workbookID) {
-                    navigate(`/sheet/${workbookID}`)
-                  }
-                  setCreateOpen(false)
-                } finally {
-                  setIsCreating(false)
-                }
-              }}
-            >
-              Create
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent>

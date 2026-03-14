@@ -20,6 +20,11 @@ import {
 
 import { sendFileEmail } from "@/api/client"
 import { renderCellDisplayValue } from "@/lib/cellFormat"
+import {
+  GRID_COPY_SELECTION_EVENT,
+  GRID_NAVIGATE_TO_CELL_EVENT,
+  GRID_PASTE_SELECTION_EVENT,
+} from "@/lib/gridEvents"
 import { useSheetStore } from "@/store/sheetStore"
 import type { Cell, KanbanRegion, Sheet } from "@/types/sheet"
 import {
@@ -149,6 +154,10 @@ type FormulaSelectionState = {
   targetRow: number
   targetCol: number
 }
+type FindMatch = {
+  row: number
+  col: number
+}
 
 const DEFAULT_COLUMN_WIDTH = 110
 const MIN_COLUMN_WIDTH = 70
@@ -159,7 +168,6 @@ const MAX_COLUMN_WIDTH =
   CELL_PREVIEW_CHAR_LIMIT * PREVIEW_CHAR_WIDTH_PX +
   GRID_CELL_HORIZONTAL_PADDING_PX
 const COLUMN_WIDTHS_STORAGE_KEY = "rowful:column-widths:v1"
-const GRID_NAVIGATE_TO_CELL_EVENT = "rowful:navigate-to-cell"
 const VISIBLE_ROW_OVERSCAN = 150
 const VISIBLE_COL_OVERSCAN = 12
 const FETCH_ROW_BLOCK = 400
@@ -169,6 +177,9 @@ const MIN_GRID_ROWS = 1000
 const DEFAULT_KANBAN_STATUS = "Unassigned"
 const FORMATTING_MENU_SHORTCUT_KEY = "f"
 const FALLBACK_FORMATTING_MENU_SHORTCUT_LABEL = "Ctrl/Cmd+Shift+F"
+const MIN_GRID_FONT_SIZE = 8
+const MIN_GRID_ROW_HEIGHT = 18
+const MIN_GRID_HEADER_HEIGHT = 24
 
 const toColumnLabel = (index: number) => {
   let label = ""
@@ -212,6 +223,12 @@ const hasRenderableStyle = (
 const buildPreparedCellStyle = (
   style: NonNullable<CellStyleValue>
 ): GridCellStyle => {
+  const wrappingMode =
+    style.wrapText || style.overflow === "wrap"
+      ? "wrap"
+      : style.overflow === "clip"
+        ? "clip"
+        : "overflow"
   const textDecoration = [
     style.underline ? "underline" : "",
     style.strike ? "line-through" : "",
@@ -232,10 +249,13 @@ const buildPreparedCellStyle = (
         ? style.hAlign
         : undefined,
     textDecoration: textDecoration || undefined,
-    textOverflow: style.wrapText ? "clip" : "ellipsis",
-    overflow: "hidden",
-    overflowWrap: style.wrapText ? "anywhere" : undefined,
-    whiteSpace: style.wrapText ? "normal" : undefined,
+    textOverflow:
+      wrappingMode === "wrap" || wrappingMode === "clip" ? "clip" : undefined,
+    overflow: wrappingMode === "overflow" ? "visible" : "hidden",
+    overflowWrap: wrappingMode === "wrap" ? "anywhere" : undefined,
+    position: wrappingMode === "overflow" ? "relative" : undefined,
+    whiteSpace: wrappingMode === "wrap" ? "normal" : "nowrap",
+    zIndex: wrappingMode === "overflow" ? "1" : undefined,
   }
 }
 
@@ -1059,6 +1079,16 @@ export function Grid() {
   const sheet = useSheetStore((state) => state.sheet)
   const currency = useSheetStore((state) => state.fileSettings.currency)
   const zoom = useSheetStore((state) => state.zoom)
+  const showGridLines = useSheetStore((state) => state.showGridLines)
+  const isFindOpen = useSheetStore((state) => state.isFindOpen)
+  const search = useSheetStore((state) => state.search)
+  const findNavigationRequest = useSheetStore(
+    (state) => state.findNavigationRequest
+  )
+  const findNavigationDirection = useSheetStore(
+    (state) => state.findNavigationDirection
+  )
+  const setFindStatus = useSheetStore((state) => state.setFindStatus)
   const sheetFontFamily = useSheetStore((state) => state.sheetFontFamily)
   const selectCell = useSheetStore((state) => state.selectCell)
   const selectRow = useSheetStore((state) => state.selectRow)
@@ -1086,7 +1116,12 @@ export function Grid() {
   const deleteRowsAt = useSheetStore((state) => state.deleteRowsAt)
   const deleteColsAt = useSheetStore((state) => state.deleteColsAt)
   const kanbanRegions = useSheetStore((state) => state.kanbanRegions)
-  const rowSize = Math.max(26, Math.round(28 * (zoom / 100)))
+  const rowSize = Math.max(MIN_GRID_ROW_HEIGHT, Math.round(28 * (zoom / 100)))
+  const fontSize = Math.max(MIN_GRID_FONT_SIZE, Math.round(12 * (zoom / 100)))
+  const headerHeight = Math.max(
+    MIN_GRID_HEADER_HEIGHT,
+    Math.round(34 * (zoom / 100))
+  )
   const kanbanRegionsForSheet = useMemo(
     () => kanbanRegions.filter((region) => region.sheetName === sheet?.name),
     [kanbanRegions, sheet?.name]
@@ -1101,6 +1136,7 @@ export function Grid() {
   const viewportSyncFrameRef = useRef<number | null>(null)
   const viewportScrollFrameRef = useRef<number | null>(null)
   const viewportScrollEventRef = useRef<ViewPortScrollEvent | null>(null)
+  const lastHandledFindNavigationRequestRef = useRef(0)
   const lastVisibleWindowKeyRef = useRef("")
   const lastFetchWindowKeyRef = useRef("")
   const lastRangeSelectionAtRef = useRef(0)
@@ -2410,6 +2446,63 @@ export function Grid() {
     [applyClipboardPayload, getActiveSelectionRange]
   )
 
+  const findMatches = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query || !preparedGridData) {
+      return [] as FindMatch[]
+    }
+
+    const matches: FindMatch[] = []
+    for (const [row, cells] of preparedGridData.cellMatrix) {
+      for (const [col, cell] of cells) {
+        const haystacks = [cell.displayValue, cell.value, cell.formula]
+        if (
+          haystacks.some((value) => value.trim().toLowerCase().includes(query))
+        ) {
+          matches.push({ row, col })
+        }
+      }
+    }
+
+    return matches.sort((left, right) =>
+      left.row === right.row ? left.col - right.col : left.row - right.row
+    )
+  }, [preparedGridData, search])
+
+  const navigateToFindMatch = useCallback((match: FindMatch) => {
+    window.dispatchEvent(
+      new CustomEvent(GRID_NAVIGATE_TO_CELL_EVENT, {
+        detail: {
+          rowStart: match.row,
+          rowEnd: match.row,
+          colStart: match.col,
+          colEnd: match.col,
+        },
+      })
+    )
+  }, [])
+
+  const getPreferredFindMatchIndex = useCallback(
+    (matches: FindMatch[]) => {
+      if (matches.length === 0) {
+        return -1
+      }
+      const exactIndex = matches.findIndex(
+        (match) => match.row === selectedRow && match.col === selectedCol
+      )
+      if (exactIndex >= 0) {
+        return exactIndex
+      }
+      const nextIndex = matches.findIndex(
+        (match) =>
+          match.row > selectedRow ||
+          (match.row === selectedRow && match.col > selectedCol)
+      )
+      return nextIndex >= 0 ? nextIndex : 0
+    },
+    [selectedCol, selectedRow]
+  )
+
   const handleMoveSelectionTo = useCallback(
     async (
       source: {
@@ -2499,6 +2592,96 @@ export function Grid() {
       },
     }
   }, [handleCopy, handleCut, handlePasteAt])
+
+  useEffect(() => {
+    const handleExternalCopy = () => {
+      void handleCopy()
+    }
+    const handleExternalPaste = () => {
+      void handlePasteAt(selectedRow, selectedCol)
+    }
+
+    window.addEventListener(GRID_COPY_SELECTION_EVENT, handleExternalCopy)
+    window.addEventListener(GRID_PASTE_SELECTION_EVENT, handleExternalPaste)
+
+    return () => {
+      window.removeEventListener(GRID_COPY_SELECTION_EVENT, handleExternalCopy)
+      window.removeEventListener(GRID_PASTE_SELECTION_EVENT, handleExternalPaste)
+    }
+  }, [handleCopy, handlePasteAt, selectedCol, selectedRow])
+
+  useEffect(() => {
+    if (!isFindOpen || !search.trim()) {
+      setFindStatus(0, -1)
+      return
+    }
+    if (findMatches.length === 0) {
+      setFindStatus(0, -1)
+      return
+    }
+
+    const currentIndex = findMatches.findIndex(
+      (match) => match.row === selectedRow && match.col === selectedCol
+    )
+    const targetIndex =
+      currentIndex >= 0 ? currentIndex : getPreferredFindMatchIndex(findMatches)
+
+    setFindStatus(findMatches.length, targetIndex)
+
+    if (currentIndex < 0 && targetIndex >= 0) {
+      navigateToFindMatch(findMatches[targetIndex])
+    }
+  }, [
+    findMatches,
+    getPreferredFindMatchIndex,
+    isFindOpen,
+    navigateToFindMatch,
+    search,
+    selectedCol,
+    selectedRow,
+    setFindStatus,
+  ])
+
+  useEffect(() => {
+    if (!isFindOpen || !search.trim() || findMatches.length === 0) {
+      return
+    }
+    if (
+      findNavigationRequest === 0 ||
+      lastHandledFindNavigationRequestRef.current === findNavigationRequest
+    ) {
+      return
+    }
+    lastHandledFindNavigationRequestRef.current = findNavigationRequest
+
+    const currentIndex = findMatches.findIndex(
+      (match) => match.row === selectedRow && match.col === selectedCol
+    )
+    const baseIndex =
+      currentIndex >= 0 ? currentIndex : getPreferredFindMatchIndex(findMatches)
+    if (baseIndex < 0) {
+      return
+    }
+
+    const nextIndex =
+      findNavigationDirection === "prev"
+        ? (baseIndex - 1 + findMatches.length) % findMatches.length
+        : (baseIndex + 1) % findMatches.length
+
+    setFindStatus(findMatches.length, nextIndex)
+    navigateToFindMatch(findMatches[nextIndex])
+  }, [
+    findMatches,
+    findNavigationDirection,
+    findNavigationRequest,
+    getPreferredFindMatchIndex,
+    isFindOpen,
+    navigateToFindMatch,
+    search,
+    selectedCol,
+    selectedRow,
+    setFindStatus,
+  ])
 
   const handleCreateKanban = useCallback(() => {
     if (!selectedRange || !sheet || !preparedGridData) {
@@ -2800,11 +2983,9 @@ export function Grid() {
           <ContextMenuTrigger asChild>
             <div
               ref={gridContainerRef}
-              className={
-                formulaSelection
-                  ? "sheet-grid formula-selection relative h-full"
-                  : "sheet-grid relative h-full"
-              }
+              className={`sheet-grid relative h-full${
+                formulaSelection ? " formula-selection" : ""
+              }${showGridLines ? "" : " hide-grid-lines"}`}
               onPointerDownCapture={(event) => {
                 setFormattingPopoverOpen(false)
                 if (event.button !== 0) {
@@ -2890,8 +3071,9 @@ export function Grid() {
               }}
               style={
                 {
-                  "--rowful-grid-font-size": `${Math.max(11, Math.round(12 * (zoom / 100)))}px`,
-                  "--rowful-grid-row-height": `${Math.max(26, Math.round(28 * (zoom / 100)))}px`,
+                  "--rowful-grid-font-size": `${fontSize}px`,
+                  "--rowful-grid-row-height": `${rowSize}px`,
+                  "--rowful-grid-header-height": `${headerHeight}px`,
                   "--rowful-grid-font-family": `${sheetFontFamily}, "Segoe UI", Arial, sans-serif`,
                   cursor: isDraggingSelection ? "grabbing" : undefined,
                 } as React.CSSProperties

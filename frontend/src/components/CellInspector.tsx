@@ -9,11 +9,10 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Redo02Icon, Undo02Icon } from "@hugeicons/core-free-icons"
 
+import { GRID_NAVIGATE_TO_CELL_EVENT } from "@/lib/gridEvents"
 import { useSheetStore } from "@/store/sheetStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-
-const GRID_NAVIGATE_TO_CELL_EVENT = "rowful:navigate-to-cell"
 
 const toColumnLabel = (index: number) => {
   let label = ""

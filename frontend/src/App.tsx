@@ -19,12 +19,45 @@ import { FilesBrowser } from "@/components/FilesBrowser"
 import { Grid } from "@/components/Grid"
 import { KanbanView } from "@/components/KanbanView"
 import { LoginPage } from "@/components/LoginPage"
+import { SheetFindCard } from "@/components/SheetFindCard"
 import { SheetTabs } from "@/components/SheetTabs"
 import { SignupPage } from "@/components/SignupPage"
 import { UserActionsPopover } from "@/components/UserActionsPopover"
 import { Toaster } from "@/components/ui/sonner"
+import { getDisplayFileName } from "@/lib/fileName"
 import { useAuthStore } from "@/store/authStore"
 import { useSheetStore } from "@/store/sheetStore"
+
+const APP_NAME = "Rowful"
+
+const formatPageTitle = (value: string) => `${value} - ${APP_NAME}`
+
+const getDocumentTitle = (
+  pathname: string,
+  workbook: { id: string; fileName: string } | null
+) => {
+  const sheetMatch = /^\/sheet\/([^/]+)$/.exec(pathname)
+  if (sheetMatch) {
+    return workbook?.id === sheetMatch[1] && workbook.fileName.trim()
+      ? formatPageTitle(getDisplayFileName(workbook.fileName))
+      : APP_NAME
+  }
+
+  switch (pathname) {
+    case "/files":
+      return formatPageTitle("Files")
+    case "/email-profiles":
+      return formatPageTitle("Email Profiles")
+    case "/domains":
+      return formatPageTitle("Domains")
+    case "/login":
+      return formatPageTitle("Sign In")
+    case "/signup":
+      return formatPageTitle("Sign Up")
+    default:
+      return APP_NAME
+  }
+}
 
 function LoadingScreen() {
   return (
@@ -54,6 +87,7 @@ function SheetWorkspace() {
   const activeWorkspaceTab = useSheetStore((state) => state.activeWorkspaceTab)
   const kanbanRegions = useSheetStore((state) => state.kanbanRegions)
   const sheetName = useSheetStore((state) => state.sheet?.name)
+  const showCellInspector = useSheetStore((state) => state.showCellInspector)
   const activeKanban = activeWorkspaceTab.startsWith("kanban:")
     ? kanbanRegions.find(
         (region) =>
@@ -78,8 +112,9 @@ function SheetWorkspace() {
         </div>
       </div>
       <div className="min-h-0 flex-1 pt-0 md:p-2 md:pt-0">
+        {activeKanban ? null : <SheetFindCard />}
         <div className="flex h-full min-h-0 flex-col overflow-hidden border-t border-border bg-card md:rounded-2xl md:border">
-          {activeKanban ? null : <CellInspector />}
+          {activeKanban || !showCellInspector ? null : <CellInspector />}
 
           <div className="min-h-0 flex-1">
             {activeKanban ? <KanbanView region={activeKanban} /> : <Grid />}
@@ -299,6 +334,17 @@ function AppShell() {
   )
 }
 
+function DocumentTitleSync() {
+  const location = useLocation()
+  const workbook = useSheetStore((state) => state.workbook)
+
+  useEffect(() => {
+    document.title = getDocumentTitle(location.pathname, workbook)
+  }, [location.pathname, workbook])
+
+  return null
+}
+
 export function App() {
   const error = useSheetStore((state) => state.error)
   const initializeAuth = useAuthStore((state) => state.initialize)
@@ -316,6 +362,7 @@ export function App() {
 
   return (
     <>
+      <DocumentTitleSync />
       <Routes>
         <Route element={<RequirePublicOnly />}>
           <Route path="/login" element={<LoginPage />} />

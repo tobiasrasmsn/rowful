@@ -89,11 +89,18 @@ type SheetState = {
   isLoading: boolean
   error: string | null
   zoom: number
+  showCellInspector: boolean
+  showGridLines: boolean
+  isFindOpen: boolean
+  findMatchCount: number
+  findActiveMatchIndex: number
+  findNavigationRequest: number
+  findNavigationDirection: "next" | "prev"
   sheetFontFamily: string
   search: string
   fileSettings: FileSettings
   kanbanRegions: KanbanRegion[]
-  createWorkbook: (name?: string) => Promise<void>
+  createWorkbook: (name?: string) => Promise<Workbook | null>
   uploadFile: (file: File) => Promise<void>
   openWorkbookByID: (id: string) => Promise<void>
   loadSheet: (sheetName: string) => Promise<void>
@@ -123,6 +130,12 @@ type SheetState = {
   clearSelectedValues: () => Promise<void>
   setNumberFormat: (kind: string) => Promise<void>
   setZoom: (zoom: number) => void
+  setShowCellInspector: (visible: boolean) => void
+  setShowGridLines: (visible: boolean) => void
+  openFind: () => void
+  closeFind: () => void
+  setFindStatus: (matchCount: number, activeMatchIndex: number) => void
+  requestFindNavigation: (direction: "next" | "prev") => void
   refreshFiles: () => Promise<void>
   refreshRecentFiles: () => Promise<void>
   renameStoredFile: (id: string, name: string) => Promise<void>
@@ -190,6 +203,7 @@ const CACHE_COL_PADDING = 24
 const MAX_HISTORY_RANGE_AREA = 4096
 const CELL_UPDATE_BATCH_CONCURRENCY = 4
 const SHEET_FONT_FAMILIES_STORAGE_KEY = "rowful:sheet-font-families:v1"
+const WORKBOOK_VIEW_PREFS_STORAGE_KEY = "rowful:workbook-view-prefs:v1"
 const DEFAULT_SHEET_FONT_FAMILY = "Calibri"
 let clearValuesInFlight = false
 let refreshFilesDebounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -204,6 +218,15 @@ const EMPTY_STYLE: CellStyle = {}
 const EMPTY_KANBAN_STATUS = ""
 
 type PersistedSheetFontsByWorkbook = Record<string, Record<string, string>>
+type PersistedWorkbookViewPrefs = {
+  zoom: number
+  showCellInspector: boolean
+  showGridLines: boolean
+}
+type PersistedWorkbookViewPrefsByWorkbook = Record<
+  string,
+  PersistedWorkbookViewPrefs
+>
 type KanbanCardColor = "none" | "green" | "red" | "yellow" | "purple"
 
 const toColumnLabel = (index: number) => {
@@ -1068,6 +1091,89 @@ const getPersistedSheetFontFamily = (workbookId: string, sheetName: string) => {
   return byWorkbook?.[sheetName] || DEFAULT_SHEET_FONT_FAMILY
 }
 
+const defaultWorkbookViewPrefs = (): PersistedWorkbookViewPrefs => ({
+  zoom: 100,
+  showCellInspector: true,
+  showGridLines: true,
+})
+
+const normalizeZoom = (zoom: number) => Math.max(25, Math.min(300, zoom))
+
+const readPersistedWorkbookViewPrefs =
+  (): PersistedWorkbookViewPrefsByWorkbook => {
+    if (typeof window === "undefined") {
+      return {}
+    }
+    try {
+      const raw = window.localStorage.getItem(WORKBOOK_VIEW_PREFS_STORAGE_KEY)
+      if (!raw) {
+        return {}
+      }
+      const parsed = JSON.parse(raw) as unknown
+      if (!parsed || typeof parsed !== "object") {
+        return {}
+      }
+      const result: PersistedWorkbookViewPrefsByWorkbook = {}
+      for (const [workbookId, rawPrefs] of Object.entries(
+        parsed as Record<string, unknown>
+      )) {
+        if (!rawPrefs || typeof rawPrefs !== "object") {
+          continue
+        }
+        const prefs = rawPrefs as Record<string, unknown>
+        const rawZoom = prefs.zoom
+        const rawShowCellInspector = prefs.showCellInspector
+        const rawShowGridLines = prefs.showGridLines
+        if (
+          typeof rawZoom !== "number" ||
+          !Number.isFinite(rawZoom) ||
+          typeof rawShowCellInspector !== "boolean" ||
+          typeof rawShowGridLines !== "boolean"
+        ) {
+          continue
+        }
+        result[workbookId] = {
+          zoom: normalizeZoom(rawZoom),
+          showCellInspector: rawShowCellInspector,
+          showGridLines: rawShowGridLines,
+        }
+      }
+      return result
+    } catch {
+      return {}
+    }
+  }
+
+const writePersistedWorkbookViewPrefs = (
+  workbookId: string,
+  prefs: PersistedWorkbookViewPrefs
+) => {
+  if (!workbookId || typeof window === "undefined") {
+    return
+  }
+  const all = readPersistedWorkbookViewPrefs()
+  all[workbookId] = prefs
+  try {
+    window.localStorage.setItem(
+      WORKBOOK_VIEW_PREFS_STORAGE_KEY,
+      JSON.stringify(all)
+    )
+  } catch {
+    // ignore storage failures
+  }
+}
+
+const getPersistedWorkbookViewPrefs = (
+  workbookId: string
+): PersistedWorkbookViewPrefs => {
+  if (!workbookId) {
+    return defaultWorkbookViewPrefs()
+  }
+  return (
+    readPersistedWorkbookViewPrefs()[workbookId] ?? defaultWorkbookViewPrefs()
+  )
+}
+
 const renamePersistedSheetFont = (
   workbookId: string,
   oldName: string,
@@ -1291,6 +1397,13 @@ export const useSheetStore = create<
   isLoading: false,
   error: null,
   zoom: 100,
+  showCellInspector: true,
+  showGridLines: true,
+  isFindOpen: false,
+  findMatchCount: 0,
+  findActiveMatchIndex: -1,
+  findNavigationRequest: 0,
+  findNavigationDirection: "next",
   sheetFontFamily: DEFAULT_SHEET_FONT_FAMILY,
   search: "",
   fileSettings: DEFAULT_FILE_SETTINGS,
@@ -1306,6 +1419,7 @@ export const useSheetStore = create<
       const payload = await createWorkbookRequest(
         trimmedName ? { name: trimmedName } : undefined
       )
+      const viewPrefs = getPersistedWorkbookViewPrefs(payload.workbook.id)
       set({
         workbook: payload.workbook,
         sheet: payload.sheet,
@@ -1323,6 +1437,9 @@ export const useSheetStore = create<
         loadedWindows: [windowKey(payload.sheet.name, DEFAULT_WINDOW)],
         loadingWindows: [],
         viewportWindow: DEFAULT_WINDOW,
+        zoom: viewPrefs.zoom,
+        showCellInspector: viewPrefs.showCellInspector,
+        showGridLines: viewPrefs.showGridLines,
         sheetFontFamily: getPersistedSheetFontFamily(
           payload.workbook.id,
           payload.sheet.name
@@ -1340,11 +1457,13 @@ export const useSheetStore = create<
         // keep defaults if settings are unavailable
       }
       await Promise.all([get().refreshFiles(), get().refreshRecentFiles()])
+      return payload.workbook
     } catch (error) {
       set({
         isLoading: false,
         error: error instanceof Error ? error.message : "Failed to create file",
       })
+      return null
     }
   },
 
@@ -1352,6 +1471,7 @@ export const useSheetStore = create<
     set({ isLoading: true, error: null })
     try {
       const payload = await uploadWorkbook(file)
+      const viewPrefs = getPersistedWorkbookViewPrefs(payload.workbook.id)
       set({
         workbook: payload.workbook,
         sheet: payload.sheet,
@@ -1369,6 +1489,9 @@ export const useSheetStore = create<
         loadedWindows: [windowKey(payload.sheet.name, DEFAULT_WINDOW)],
         loadingWindows: [],
         viewportWindow: DEFAULT_WINDOW,
+        zoom: viewPrefs.zoom,
+        showCellInspector: viewPrefs.showCellInspector,
+        showGridLines: viewPrefs.showGridLines,
         sheetFontFamily: getPersistedSheetFontFamily(
           payload.workbook.id,
           payload.sheet.name
@@ -1398,6 +1521,7 @@ export const useSheetStore = create<
     set({ isLoading: true, error: null })
     try {
       const payload = await openFile(id, DEFAULT_WINDOW)
+      const viewPrefs = getPersistedWorkbookViewPrefs(payload.workbook.id)
       set({
         workbook: payload.workbook,
         sheet: payload.sheet,
@@ -1415,6 +1539,9 @@ export const useSheetStore = create<
         loadedWindows: [windowKey(payload.sheet.name, DEFAULT_WINDOW)],
         loadingWindows: [],
         viewportWindow: DEFAULT_WINDOW,
+        zoom: viewPrefs.zoom,
+        showCellInspector: viewPrefs.showCellInspector,
+        showGridLines: viewPrefs.showGridLines,
         sheetFontFamily: getPersistedSheetFontFamily(
           payload.workbook.id,
           payload.sheet.name
@@ -2655,7 +2782,76 @@ export const useSheetStore = create<
   },
 
   setZoom: (zoom) => {
-    set({ zoom: Math.max(25, Math.min(300, zoom)) })
+    const nextZoom = normalizeZoom(zoom)
+    const state = get()
+    set({ zoom: nextZoom })
+    if (!state.workbook?.id) {
+      return
+    }
+    writePersistedWorkbookViewPrefs(state.workbook.id, {
+      zoom: nextZoom,
+      showCellInspector: state.showCellInspector,
+      showGridLines: state.showGridLines,
+    })
+  },
+
+  setShowCellInspector: (visible) => {
+    const state = get()
+    set({ showCellInspector: visible })
+    if (!state.workbook?.id) {
+      return
+    }
+    writePersistedWorkbookViewPrefs(state.workbook.id, {
+      zoom: state.zoom,
+      showCellInspector: visible,
+      showGridLines: state.showGridLines,
+    })
+  },
+
+  setShowGridLines: (visible) => {
+    const state = get()
+    set({ showGridLines: visible })
+    if (!state.workbook?.id) {
+      return
+    }
+    writePersistedWorkbookViewPrefs(state.workbook.id, {
+      zoom: state.zoom,
+      showCellInspector: state.showCellInspector,
+      showGridLines: visible,
+    })
+  },
+
+  openFind: () => {
+    set({ isFindOpen: true })
+  },
+
+  closeFind: () => {
+    set({
+      isFindOpen: false,
+      findMatchCount: 0,
+      findActiveMatchIndex: -1,
+    })
+  },
+
+  setFindStatus: (matchCount, activeMatchIndex) => {
+    const normalizedActiveIndex =
+      matchCount > 0 ? Math.max(0, activeMatchIndex) : -1
+    set((state) =>
+      state.findMatchCount === matchCount &&
+      state.findActiveMatchIndex === normalizedActiveIndex
+        ? state
+        : {
+            findMatchCount: matchCount,
+            findActiveMatchIndex: normalizedActiveIndex,
+          }
+    )
+  },
+
+  requestFindNavigation: (direction) => {
+    set((state) => ({
+      findNavigationDirection: direction,
+      findNavigationRequest: state.findNavigationRequest + 1,
+    }))
   },
 
   refreshFiles: async () => {
@@ -3485,6 +3681,13 @@ export function resetSheetStore() {
     isLoading: false,
     error: null,
     zoom: 100,
+    showCellInspector: true,
+    showGridLines: true,
+    isFindOpen: false,
+    findMatchCount: 0,
+    findActiveMatchIndex: -1,
+    findNavigationRequest: 0,
+    findNavigationDirection: "next",
     sheetFontFamily: DEFAULT_SHEET_FONT_FAMILY,
     search: "",
     fileSettings: DEFAULT_FILE_SETTINGS,
