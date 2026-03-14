@@ -5,6 +5,7 @@ import {
   HeartIcon,
   LeafIcon,
   MoonIcon,
+  MoonStarIcon,
   SproutIcon,
   SunIcon,
 } from "lucide-react"
@@ -40,6 +41,7 @@ const BAYER_MATRIX = [
 const THEME_OPTIONS = [
   { value: "light", label: "Light", icon: SunIcon },
   { value: "dark", label: "Dark", icon: MoonIcon },
+  { value: "midnight", label: "Midnight", icon: MoonStarIcon },
   { value: "forrest", label: "Forrest", icon: LeafIcon },
   { value: "blossom", label: "Blossom", icon: HeartIcon },
   { value: "matcha", label: "Matcha", icon: SproutIcon },

@@ -1,7 +1,14 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
 
-type Theme = "dark" | "light" | "forrest" | "blossom" | "matcha" | "system"
+type Theme =
+  | "dark"
+  | "midnight"
+  | "light"
+  | "forrest"
+  | "blossom"
+  | "matcha"
+  | "system"
 type ResolvedTheme = Exclude<Theme, "system">
 
 type ThemeProviderProps = {
@@ -18,8 +25,10 @@ type ThemeProviderState = {
 }
 
 const COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)"
+const LEGACY_DARK_THEME_MIGRATION_SUFFIX = ":theme-dark-v2"
 const THEME_VALUES: Theme[] = [
   "dark",
+  "midnight",
   "light",
   "forrest",
   "blossom",
@@ -48,7 +57,30 @@ function getSystemTheme(): ResolvedTheme {
 }
 
 function isDarkResolvedTheme(theme: ResolvedTheme) {
-  return theme === "dark" || theme === "forrest"
+  return theme === "dark" || theme === "midnight" || theme === "forrest"
+}
+
+function migrateLegacyDarkTheme(storageKey: string) {
+  const migrationKey = `${storageKey}${LEGACY_DARK_THEME_MIGRATION_SUFFIX}`
+  const hasMigrated = localStorage.getItem(migrationKey) === "true"
+
+  if (hasMigrated) {
+    return
+  }
+
+  const storedTheme = localStorage.getItem(storageKey)
+  if (storedTheme === "dark") {
+    localStorage.setItem(storageKey, "midnight")
+  }
+
+  localStorage.setItem(migrationKey, "true")
+}
+
+function getStoredTheme(storageKey: string) {
+  migrateLegacyDarkTheme(storageKey)
+  const storedTheme = localStorage.getItem(storageKey)
+
+  return isTheme(storedTheme) ? storedTheme : null
 }
 
 function disableTransitionsTemporarily() {
@@ -97,8 +129,8 @@ export function ThemeProvider({
   ...props
 }: ThemeProviderProps) {
   const [theme, setThemeState] = React.useState<Theme>(() => {
-    const storedTheme = localStorage.getItem(storageKey)
-    if (isTheme(storedTheme)) {
+    const storedTheme = getStoredTheme(storageKey)
+    if (storedTheme) {
       return storedTheme
     }
 
@@ -106,8 +138,8 @@ export function ThemeProvider({
   })
   const [resolvedTheme, setResolvedTheme] = React.useState<ResolvedTheme>(
     () => {
-      const storedTheme = localStorage.getItem(storageKey)
-      const initialTheme = isTheme(storedTheme) ? storedTheme : defaultTheme
+      const storedTheme = getStoredTheme(storageKey)
+      const initialTheme = storedTheme ?? defaultTheme
 
       return initialTheme === "system" ? getSystemTheme() : initialTheme
     }
@@ -130,7 +162,14 @@ export function ThemeProvider({
         ? disableTransitionsTemporarily()
         : null
 
-      root.classList.remove("light", "dark", "forrest", "blossom", "matcha")
+      root.classList.remove(
+        "light",
+        "dark",
+        "midnight",
+        "forrest",
+        "blossom",
+        "matcha"
+      )
       root.classList.add(resolvedTheme)
       root.style.colorScheme = isDarkResolvedTheme(resolvedTheme)
         ? "dark"

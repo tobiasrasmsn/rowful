@@ -12,7 +12,9 @@ import { useTheme } from "@/components/theme-provider"
 const Toaster = ({ ...props }: ToasterProps) => {
   const { resolvedTheme } = useTheme()
   const toasterTheme =
-    resolvedTheme === "dark" || resolvedTheme === "forrest"
+    resolvedTheme === "dark" ||
+    resolvedTheme === "midnight" ||
+    resolvedTheme === "forrest"
       ? "dark"
       : "light"
 

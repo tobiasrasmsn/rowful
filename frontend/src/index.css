@@ -3,7 +3,7 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
-@custom-variant dark (&:is(.dark *, .forrest *));
+@custom-variant dark (&:is(.dark *, .midnight *, .forrest *));
 
 :root {
   --background: oklch(0.985 0.002 95.1);
@@ -43,6 +43,8 @@
   --primary-strong: oklch(0.39 0.09 244.6 / 0.9);
   --primary-soft: oklch(0.39 0.09 244.6 / 0.08);
   --primary-soft-strong: oklch(0.39 0.09 244.6 / 0.12);
+  --grid-selection-surface: oklch(0.39 0.09 244.6 / 0.1);
+  --grid-selection-surface-strong: oklch(0.39 0.09 244.6 / 0.14);
   --loading-strip-start: oklch(0.39 0.09 244.6 / 0.45);
   --loading-strip-center: oklch(0.39 0.09 244.6 / 0.7);
   --loading-shimmer-start: oklch(0.985 0.001 95.1 / 0);
@@ -51,6 +53,52 @@
 }
 
 .dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.972 0 0);
+  --card: oklch(0.182 0 0);
+  --card-foreground: oklch(0.972 0 0);
+  --popover: oklch(0.198 0 0);
+  --popover-foreground: oklch(0.972 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.145 0 0);
+  --secondary: oklch(0.238 0 0);
+  --secondary-foreground: oklch(0.94 0 0);
+  --muted: oklch(0.22 0 0);
+  --muted-foreground: oklch(0.7 0 0);
+  --accent: oklch(0.275 0 0);
+  --accent-foreground: oklch(0.972 0 0);
+  --destructive: oklch(0.78 0 0);
+  --border: oklch(0.295 0 0);
+  --input: oklch(0.295 0 0);
+  --ring: oklch(0.72 0 0);
+  --success: oklch(0.78 0 0);
+  --success-foreground: oklch(0.14 0 0);
+  --success-soft: oklch(0.34 0 0 / 0.32);
+  --warning: oklch(0.82 0 0);
+  --warning-foreground: oklch(0.16 0 0);
+  --warning-soft: oklch(0.38 0 0 / 0.28);
+  --overlay: oklch(0 0 0 / 0.56);
+  --background-gradient-start: oklch(0.19 0 0);
+  --background-gradient-end: oklch(0.105 0 0);
+  --auth-glow-primary: oklch(1 0 0 / 0.08);
+  --auth-glow-secondary: oklch(0.72 0 0 / 0.1);
+  --auth-overlay: oklch(1 0 0 / 0.03);
+  --domains-hero-start: oklch(1 0 0 / 0.1);
+  --domains-hero-end: oklch(0.22 0 0 / 0.88);
+  --access-hero-start: oklch(0.72 0 0 / 0.1);
+  --access-hero-end: oklch(0.32 0 0 / 0.26);
+  --primary-strong: oklch(0.92 0 0 / 0.92);
+  --primary-soft: oklch(1 0 0 / 0.1);
+  --primary-soft-strong: oklch(1 0 0 / 0.14);
+  --grid-selection-surface: oklch(1 0 0 / 0.18);
+  --grid-selection-surface-strong: oklch(1 0 0 / 0.25);
+  --loading-strip-start: oklch(1 0 0 / 0.2);
+  --loading-strip-center: oklch(1 0 0 / 0.42);
+  --loading-shimmer-start: oklch(0.972 0 0 / 0);
+  --loading-shimmer-center: oklch(0.972 0 0 / 0.34);
+}
+
+.midnight {
   --background: oklch(0.205 0.012 264.5);
   --foreground: oklch(0.96 0.004 95.1);
   --card: oklch(0.24 0.013 264.5);
@@ -88,6 +136,8 @@
   --primary-strong: oklch(0.72 0.11 244.6 / 0.95);
   --primary-soft: oklch(0.72 0.11 244.6 / 0.16);
   --primary-soft-strong: oklch(0.72 0.11 244.6 / 0.24);
+  --grid-selection-surface: oklch(0.82 0.1 244.6 / 0.24);
+  --grid-selection-surface-strong: oklch(0.84 0.1 244.6 / 0.32);
   --loading-strip-start: oklch(0.72 0.11 244.6 / 0.4);
   --loading-strip-center: oklch(0.72 0.11 244.6 / 0.65);
   --loading-shimmer-start: oklch(0.96 0.004 95.1 / 0);
@@ -132,6 +182,8 @@
   --primary-strong: oklch(0.74 0.1 145 / 0.94);
   --primary-soft: oklch(0.74 0.1 145 / 0.14);
   --primary-soft-strong: oklch(0.74 0.1 145 / 0.22);
+  --grid-selection-surface: oklch(0.84 0.09 145 / 0.22);
+  --grid-selection-surface-strong: oklch(0.86 0.09 145 / 0.3);
   --loading-strip-start: oklch(0.74 0.1 145 / 0.35);
   --loading-strip-center: oklch(0.8 0.12 145 / 0.62);
   --loading-shimmer-start: oklch(0.95 0.02 145 / 0);
@@ -176,6 +228,8 @@
   --primary-strong: oklch(0.66 0.14 2 / 0.9);
   --primary-soft: oklch(0.73 0.17 6 / 0.12);
   --primary-soft-strong: oklch(0.73 0.17 6 / 0.18);
+  --grid-selection-surface: oklch(0.73 0.17 6 / 0.14);
+  --grid-selection-surface-strong: oklch(0.73 0.17 6 / 0.21);
   --loading-strip-start: oklch(0.73 0.17 6 / 0.35);
   --loading-strip-center: oklch(0.8 0.13 350 / 0.55);
   --loading-shimmer-start: oklch(0.99 0.01 12 / 0);
@@ -220,6 +274,8 @@
   --primary-strong: oklch(0.62 0.1 142 / 0.9);
   --primary-soft: oklch(0.69 0.12 142 / 0.1);
   --primary-soft-strong: oklch(0.69 0.12 142 / 0.16);
+  --grid-selection-surface: oklch(0.69 0.12 142 / 0.12);
+  --grid-selection-surface-strong: oklch(0.69 0.12 142 / 0.19);
   --loading-strip-start: oklch(0.69 0.12 142 / 0.32);
   --loading-strip-center: oklch(0.78 0.08 120 / 0.5);
   --loading-shimmer-start: oklch(0.985 0.006 110 / 0);
@@ -392,7 +448,7 @@
   --revo-grid-cell-border: var(--color-border);
   --revo-grid-foreground: var(--color-foreground);
   --revo-grid-header-border: var(--color-border);
-  --revo-grid-focused-bg: var(--primary-soft);
+  --revo-grid-focused-bg: var(--grid-selection-surface);
   --revo-grid-text: var(--color-foreground);
   border: 0;
   color: var(--color-foreground);
@@ -508,7 +564,7 @@
 
 .sheet-grid .temp-bg-range,
 .sheet-grid .focused-cell {
-  background: var(--primary-soft-strong);
+  background: var(--grid-selection-surface-strong);
 }
 
 .sheet-grid.formula-selection .focused-cell {
