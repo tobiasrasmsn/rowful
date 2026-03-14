@@ -981,7 +981,15 @@ export function FileTabsBar({
             className={cn("size-6", shouldInvertLogo && "invert")}
           />
         ) : (
-          <HugeiconsIcon icon={FileSpreadsheetIcon} size={18} />
+          <button
+            type="button"
+            onClick={() => navigate("/files")}
+            className="inline-flex size-fit cursor-pointer items-center justify-center text-muted-foreground"
+            aria-label="Browse files"
+            title="Browse files"
+          >
+            <HugeiconsIcon icon={FileSpreadsheetIcon} size={18} />
+          </button>
         )}
         {isEditing ? (
           <Input
