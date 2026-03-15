@@ -25,6 +25,13 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS signup_policy (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  signups_enabled INTEGER NOT NULL DEFAULT 0,
+  invite_only INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS user_sessions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -75,6 +82,13 @@ CREATE TABLE IF NOT EXISTS email_profiles (
 	if _, err := s.db.Exec(schema); err != nil {
 		return fmt.Errorf("create auth schema: %w", err)
 	}
+	if _, err := s.db.Exec(`
+INSERT INTO signup_policy(id, signups_enabled, invite_only, updated_at)
+VALUES(1, 0, 0, ?)
+ON CONFLICT(id) DO NOTHING
+`, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return fmt.Errorf("seed signup policy: %w", err)
+	}
 	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at);`); err != nil {
 		return fmt.Errorf("create users index: %w", err)
 	}
@@ -109,9 +123,14 @@ func (s *Store) GetBootstrapState() (models.AuthBootstrap, error) {
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
 		return models.AuthBootstrap{}, fmt.Errorf("count users: %w", err)
 	}
+	policy, err := s.getSignupPolicy()
+	if err != nil {
+		return models.AuthBootstrap{}, err
+	}
 	return models.AuthBootstrap{
-		SetupRequired: count == 0,
-		InviteOnly:    false,
+		SetupRequired:  count == 0,
+		SignupsEnabled: policy.SignupsEnabled,
+		InviteOnly:     policy.InviteOnly,
 	}, nil
 }
 
@@ -140,6 +159,24 @@ func (s *Store) CreateUser(name, email, passwordHash string) (models.AuthUser, e
 	}
 
 	isAdmin := userCount == 0
+	if !isAdmin {
+		policy, err := getSignupPolicyTx(tx)
+		if err != nil {
+			return models.AuthUser{}, err
+		}
+		if !policy.SignupsEnabled {
+			return models.AuthUser{}, ErrForbidden
+		}
+		if policy.InviteOnly {
+			allowed, err := isEmailAllowlistedTx(tx, normalizedEmail)
+			if err != nil {
+				return models.AuthUser{}, err
+			}
+			if !allowed {
+				return models.AuthUser{}, ErrForbidden
+			}
+		}
+	}
 
 	user := models.AuthUser{
 		ID:        uuid.NewString(),
@@ -163,11 +200,82 @@ VALUES(?, ?, ?, ?, ?, ?)
 			return models.AuthUser{}, err
 		}
 	}
+	if err := claimAllowlistEntryTx(tx, normalizedEmail, user.ID, now); err != nil {
+		return models.AuthUser{}, err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return models.AuthUser{}, fmt.Errorf("commit tx: %w", err)
 	}
 	return user, nil
+}
+
+func (s *Store) UpdateSignupPolicy(signupsEnabled, inviteOnly bool) (models.AuthBootstrap, error) {
+	normalizedInviteOnly := signupsEnabled && inviteOnly
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := s.db.Exec(`
+INSERT INTO signup_policy(id, signups_enabled, invite_only, updated_at)
+VALUES(1, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  signups_enabled = excluded.signups_enabled,
+  invite_only = excluded.invite_only,
+  updated_at = excluded.updated_at
+`, boolToInt(signupsEnabled), boolToInt(normalizedInviteOnly), now); err != nil {
+		return models.AuthBootstrap{}, fmt.Errorf("update signup policy: %w", err)
+	}
+	return s.GetBootstrapState()
+}
+
+func (s *Store) getSignupPolicy() (models.AuthBootstrap, error) {
+	return getSignupPolicyTx(s.db)
+}
+
+func getSignupPolicyTx(query interface {
+	QueryRow(query string, args ...any) *sql.Row
+}) (models.AuthBootstrap, error) {
+	var signupsEnabled, inviteOnly int
+	err := query.QueryRow(`
+SELECT signups_enabled, invite_only
+FROM signup_policy
+WHERE id = 1
+`).Scan(&signupsEnabled, &inviteOnly)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.AuthBootstrap{}, nil
+		}
+		return models.AuthBootstrap{}, fmt.Errorf("load signup policy: %w", err)
+	}
+	return models.AuthBootstrap{
+		SignupsEnabled: signupsEnabled == 1,
+		InviteOnly:     inviteOnly == 1,
+	}, nil
+}
+
+func isEmailAllowlistedTx(tx *sql.Tx, email string) (bool, error) {
+	var exists int
+	err := tx.QueryRow(`
+SELECT 1
+FROM signup_allowlist
+WHERE email = ?
+`, email).Scan(&exists)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("check signup allowlist: %w", err)
+	}
+	return true, nil
+}
+
+func claimAllowlistEntryTx(tx *sql.Tx, email, userID string, claimedAt time.Time) error {
+	if _, err := tx.Exec(`
+UPDATE signup_allowlist
+SET claimed_by = ?, claimed_at = ?
+WHERE email = ? AND claimed_by IS NULL
+`, userID, claimedAt.UTC().Format(time.RFC3339Nano), email); err != nil {
+		return fmt.Errorf("claim allowlist entry: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) claimLegacyWorkbooksTx(tx *sql.Tx, userID string) error {

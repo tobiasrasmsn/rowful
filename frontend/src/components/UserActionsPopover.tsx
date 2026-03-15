@@ -152,6 +152,7 @@ export function UserActionsPopover({ className }: UserActionsPopoverProps) {
   const navigate = useNavigate()
 
   const isFilesPage = location.pathname.startsWith("/files")
+  const isAdminAccessPage = location.pathname.startsWith("/admin/access")
   const isDomainsPage = location.pathname.startsWith("/domains")
   const isEmailProfilesPage = location.pathname.startsWith("/email-profiles")
   const label = user?.name ?? user?.email
@@ -189,6 +190,15 @@ export function UserActionsPopover({ className }: UserActionsPopoverProps) {
             </div>
           </PopoverHeader>
 
+          {user?.isAdmin ? (
+            <Button
+              variant={isAdminAccessPage ? "secondary" : "ghost"}
+              className="w-full justify-start"
+              onClick={() => navigate("/admin/access")}
+            >
+              Admin Access
+            </Button>
+          ) : null}
           {user?.isAdmin && domainManagementEnabled ? (
             <Button
               variant={isDomainsPage ? "secondary" : "ghost"}

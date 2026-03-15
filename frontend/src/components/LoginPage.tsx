@@ -8,12 +8,14 @@ import { useAuthStore } from "@/store/authStore"
 
 export function LoginPage() {
   const login = useAuthStore((state) => state.login)
+  const bootstrap = useAuthStore((state) => state.bootstrap)
   const navigate = useNavigate()
   const location = useLocation()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const canSignup = bootstrap.setupRequired || bootstrap.signupsEnabled
 
   const nextPath = (location.state as { from?: { pathname?: string } } | null)
     ?.from?.pathname
@@ -21,10 +23,14 @@ export function LoginPage() {
   return (
     <AuthShell
       title="Welcome back!"
-      description="Please sign in to continue."
-      alternateLabel="Need an account?"
-      alternateHref="/signup"
-      alternateText="Sign up"
+      description={
+        canSignup
+          ? "Please sign in to continue."
+          : "Please sign in to continue. New sign ups are currently closed."
+      }
+      alternateLabel={canSignup ? "Need an account?" : undefined}
+      alternateHref={canSignup ? "/signup" : undefined}
+      alternateText={canSignup ? "Sign up" : undefined}
     >
       <form
         className="space-y-4"

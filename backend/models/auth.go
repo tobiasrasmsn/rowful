@@ -11,8 +11,9 @@ type AuthUser struct {
 }
 
 type AuthBootstrap struct {
-	SetupRequired bool `json:"setupRequired"`
-	InviteOnly    bool `json:"inviteOnly"`
+	SetupRequired  bool `json:"setupRequired"`
+	SignupsEnabled bool `json:"signupsEnabled"`
+	InviteOnly     bool `json:"inviteOnly"`
 }
 
 type AuthSessionResponse struct {

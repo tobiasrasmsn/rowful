@@ -18,16 +18,22 @@ type AuthState = {
   bootstrap: AuthBootstrap
   domainManagementEnabled: boolean
   isReady: boolean
+  setBootstrap: (bootstrap: AuthBootstrap) => void
   initialize: () => Promise<void>
   refreshSession: () => Promise<void>
   login: (payload: { email: string; password: string }) => Promise<void>
-  signup: (payload: { name: string; email: string; password: string }) => Promise<void>
+  signup: (payload: {
+    name: string
+    email: string
+    password: string
+  }) => Promise<void>
   logout: () => Promise<void>
   handleUnauthorized: () => void
 }
 
 const GUEST_BOOTSTRAP: AuthBootstrap = {
   setupRequired: false,
+  signupsEnabled: false,
   inviteOnly: false,
 }
 
@@ -42,6 +48,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   bootstrap: GUEST_BOOTSTRAP,
   domainManagementEnabled: false,
   isReady: false,
+
+  setBootstrap: (bootstrap) => {
+    set({ bootstrap })
+  },
 
   initialize: async () => {
     registerUnauthorizedHandler(() => {

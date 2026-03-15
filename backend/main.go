@@ -97,6 +97,8 @@ func main() {
 				admin.Get("/domains", domainsHandler.List)
 				admin.Post("/domains/check", domainsHandler.Check)
 				admin.Post("/domains", domainsHandler.Create)
+				admin.Get("/admin/signup-policy", authHandler.GetSignupPolicy)
+				admin.Patch("/admin/signup-policy", authHandler.UpdateSignupPolicy)
 				admin.Get("/admin/allowlist", authHandler.ListAllowlist)
 				admin.Post("/admin/allowlist", authHandler.AddAllowlist)
 				admin.Delete("/admin/allowlist", authHandler.DeleteAllowlist)

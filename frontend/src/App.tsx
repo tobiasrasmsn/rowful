@@ -11,6 +11,7 @@ import {
 } from "react-router-dom"
 import { toast } from "sonner"
 
+import { AdminAccessPage } from "@/components/AdminAccessPage"
 import { CellInspector } from "@/components/CellInspector"
 import { DomainsPage } from "@/components/DomainsPage"
 import { EmailProfilesPage } from "@/components/EmailProfilesPage"
@@ -50,6 +51,8 @@ const getDocumentTitle = (
       return formatPageTitle("Email Profiles")
     case "/domains":
       return formatPageTitle("Domains")
+    case "/admin/access":
+      return formatPageTitle("Admin Access")
     case "/login":
       return formatPageTitle("Sign In")
     case "/signup":
@@ -388,6 +391,7 @@ export function App() {
             <Route path="/email-profiles" element={<EmailProfilesPage />} />
             <Route path="/sheet/:id" element={<SheetRoutePage />} />
             <Route element={<RequireAdmin />}>
+              <Route path="/admin/access" element={<AdminAccessPage />} />
               <Route element={<RequireDomainManagement />}>
                 <Route path="/domains" element={<DomainsPage />} />
               </Route>

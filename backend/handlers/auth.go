@@ -55,6 +55,11 @@ type allowlistRequest struct {
 	Email string `json:"email"`
 }
 
+type signupPolicyRequest struct {
+	SignupsEnabled bool `json:"signupsEnabled"`
+	InviteOnly     bool `json:"inviteOnly"`
+}
+
 func NewAuthHandler(cfg config.Config, storageStore *storage.Store) AuthHandler {
 	return AuthHandler{cfg: cfg, storage: storageStore}
 }
@@ -136,6 +141,13 @@ func (h AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		switch err {
 		case storage.ErrConflict:
 			writeJSON(w, http.StatusConflict, models.ErrorResponse{Error: "an account with that email already exists"})
+		case storage.ErrForbidden:
+			bootstrap, bootstrapErr := h.storage.GetBootstrapState()
+			if bootstrapErr == nil && bootstrap.InviteOnly {
+				writeJSON(w, http.StatusForbidden, models.ErrorResponse{Error: "this email is not on the signup whitelist"})
+				return
+			}
+			writeJSON(w, http.StatusForbidden, models.ErrorResponse{Error: "sign up is currently disabled"})
 		default:
 			writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to create account"})
 		}
@@ -223,6 +235,30 @@ func (h AuthHandler) ListAllowlist(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, models.AllowlistResponse{Entries: entries})
+}
+
+func (h AuthHandler) GetSignupPolicy(w http.ResponseWriter, _ *http.Request) {
+	bootstrap, err := h.storage.GetBootstrapState()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load signup policy"})
+		return
+	}
+	writeJSON(w, http.StatusOK, bootstrap)
+}
+
+func (h AuthHandler) UpdateSignupPolicy(w http.ResponseWriter, r *http.Request) {
+	var req signupPolicyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid JSON body"})
+		return
+	}
+
+	bootstrap, err := h.storage.UpdateSignupPolicy(req.SignupsEnabled, req.InviteOnly)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to update signup policy"})
+		return
+	}
+	writeJSON(w, http.StatusOK, bootstrap)
 }
 
 func (h AuthHandler) AddAllowlist(w http.ResponseWriter, r *http.Request) {

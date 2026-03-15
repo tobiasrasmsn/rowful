@@ -12,9 +12,9 @@ export function AuthShell({
 }: {
   title: string
   description: string
-  alternateLabel: string
-  alternateHref: string
-  alternateText: string
+  alternateLabel?: string
+  alternateHref?: string
+  alternateText?: string
   children: ReactNode
 }) {
   return (
@@ -54,15 +54,17 @@ export function AuthShell({
 
           <div>{children}</div>
 
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            {alternateLabel}{" "}
-            <Link
-              className="font-medium text-primary hover:text-primary/80"
-              to={alternateHref}
-            >
-              {alternateText}
-            </Link>
-          </div>
+          {alternateLabel && alternateHref && alternateText ? (
+            <div className="mt-6 text-center text-sm text-muted-foreground">
+              {alternateLabel}{" "}
+              <Link
+                className="font-medium text-primary hover:text-primary/80"
+                to={alternateHref}
+              >
+                {alternateText}
+              </Link>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

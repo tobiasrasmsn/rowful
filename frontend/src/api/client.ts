@@ -19,7 +19,11 @@ import type {
   ManagedDomainResponse,
   ManagedDomainsResponse,
 } from "@/types/domain"
-import type { AllowlistResponse, AuthSessionResponse } from "@/types/auth"
+import type {
+  AllowlistResponse,
+  AuthBootstrap,
+  AuthSessionResponse,
+} from "@/types/auth"
 import { getCSRFToken, handleUnauthorized } from "@/lib/authSession"
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "")
@@ -744,6 +748,23 @@ export async function logout(): Promise<AuthSessionResponse> {
 export async function listAllowlistEntries(): Promise<AllowlistResponse> {
   const response = await apiFetch(`${API_BASE_URL}/api/admin/allowlist`)
   return parseJson<AllowlistResponse>(response)
+}
+
+export async function fetchSignupPolicy(): Promise<AuthBootstrap> {
+  const response = await apiFetch(`${API_BASE_URL}/api/admin/signup-policy`)
+  return parseJson<AuthBootstrap>(response)
+}
+
+export async function updateSignupPolicy(payload: {
+  signupsEnabled: boolean
+  inviteOnly: boolean
+}): Promise<AuthBootstrap> {
+  const response = await apiFetch(`${API_BASE_URL}/api/admin/signup-policy`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  return parseJson<AuthBootstrap>(response)
 }
 
 export async function addAllowlistEntry(

@@ -8,6 +8,7 @@ export type AuthUser = {
 
 export type AuthBootstrap = {
   setupRequired: boolean
+  signupsEnabled: boolean
   inviteOnly: boolean
 }
 
