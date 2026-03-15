@@ -23,6 +23,12 @@ type Config struct {
 	IdleTimeout      time.Duration
 }
 
+func (c Config) DomainManagementEnabled() bool {
+	return strings.TrimSpace(c.CaddyAdminURL) != "" &&
+		strings.TrimSpace(c.CaddyConfigPath) != "" &&
+		strings.TrimSpace(c.CaddySitesPath) != ""
+}
+
 func Load() Config {
 	port := getEnv("PORT", "8080")
 	maxMB := getEnvInt64("MAX_FILE_SIZE_MB", 25)

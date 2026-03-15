@@ -16,6 +16,7 @@ type AuthState = {
   status: AuthStatus
   user: AuthUser | null
   bootstrap: AuthBootstrap
+  domainManagementEnabled: boolean
   isReady: boolean
   initialize: () => Promise<void>
   refreshSession: () => Promise<void>
@@ -39,6 +40,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   status: "loading",
   user: null,
   bootstrap: GUEST_BOOTSTRAP,
+  domainManagementEnabled: false,
   isReady: false,
 
   initialize: async () => {
@@ -57,6 +59,7 @@ export const useAuthStore = create<AuthState>((set) => ({
           status: "authenticated",
           user: response.user,
           bootstrap: response.bootstrap,
+          domainManagementEnabled: response.domainManagementEnabled,
           isReady: true,
         })
         return
@@ -66,6 +69,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         status: "guest",
         user: null,
         bootstrap: response.bootstrap,
+        domainManagementEnabled: response.domainManagementEnabled,
         isReady: true,
       })
     } catch {
@@ -74,6 +78,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         status: "guest",
         user: null,
         bootstrap: GUEST_BOOTSTRAP,
+        domainManagementEnabled: false,
         isReady: true,
       })
     }
@@ -86,6 +91,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       status: "authenticated",
       user: response.user ?? null,
       bootstrap: response.bootstrap,
+      domainManagementEnabled: response.domainManagementEnabled,
       isReady: true,
     })
   },
@@ -97,6 +103,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       status: "authenticated",
       user: response.user ?? null,
       bootstrap: response.bootstrap,
+      domainManagementEnabled: response.domainManagementEnabled,
       isReady: true,
     })
   },
@@ -104,12 +111,16 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: async () => {
     try {
       const response = await logoutRequest()
-      set({ bootstrap: response.bootstrap })
+      set({
+        bootstrap: response.bootstrap,
+        domainManagementEnabled: response.domainManagementEnabled,
+      })
     } finally {
       applyGuestState()
       set({
         status: "guest",
         user: null,
+        domainManagementEnabled: false,
         isReady: true,
       })
     }
@@ -120,6 +131,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({
       status: "guest",
       user: null,
+      domainManagementEnabled: false,
       isReady: true,
     })
   },

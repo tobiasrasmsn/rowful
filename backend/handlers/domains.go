@@ -50,6 +50,11 @@ func NewDomainsHandler(cfg config.Config, storageStore *storage.Store) DomainsHa
 }
 
 func (h DomainsHandler) List(w http.ResponseWriter, _ *http.Request) {
+	if err := h.ensureCaddyProvisioningAvailable(); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+
 	domains, err := h.storage.ListManagedDomains()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load managed domains"})
@@ -59,6 +64,11 @@ func (h DomainsHandler) List(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h DomainsHandler) Check(w http.ResponseWriter, r *http.Request) {
+	if err := h.ensureCaddyProvisioningAvailable(); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+
 	domain, ok := decodeDomainRequest(w, r)
 	if !ok {
 		return
@@ -286,6 +296,9 @@ func (h DomainsHandler) syncCaddyConfig() error {
 }
 
 func (h DomainsHandler) ensureCaddyProvisioningAvailable() error {
+	if h.cfg.DomainManagementEnabled() {
+		return nil
+	}
 	if strings.TrimSpace(h.cfg.CaddyAdminURL) == "" {
 		return errCaddyUnavailable
 	}

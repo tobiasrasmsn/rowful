@@ -143,6 +143,9 @@ function HashAvatar({
 
 export function UserActionsPopover({ className }: UserActionsPopoverProps) {
   const user = useAuthStore((state) => state.user)
+  const domainManagementEnabled = useAuthStore(
+    (state) => state.domainManagementEnabled
+  )
   const logout = useAuthStore((state) => state.logout)
   const { theme, resolvedTheme, setTheme } = useTheme()
   const location = useLocation()
@@ -186,7 +189,7 @@ export function UserActionsPopover({ className }: UserActionsPopoverProps) {
             </div>
           </PopoverHeader>
 
-          {user?.isAdmin ? (
+          {user?.isAdmin && domainManagementEnabled ? (
             <Button
               variant={isDomainsPage ? "secondary" : "ghost"}
               className="w-full justify-start"

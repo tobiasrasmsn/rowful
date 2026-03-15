@@ -33,3 +33,16 @@ func TestCreateReturnsServiceUnavailableWhenCaddyIsDisabled(t *testing.T) {
 		t.Fatalf("expected error mentioning Caddy, got %q", resp.Error)
 	}
 }
+
+func TestListReturnsServiceUnavailableWhenCaddyIsDisabled(t *testing.T) {
+	handler := NewDomainsHandler(config.Config{}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/domains", nil)
+	rec := httptest.NewRecorder()
+
+	handler.List(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status %d, got %d", http.StatusServiceUnavailable, rec.Code)
+	}
+}

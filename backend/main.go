@@ -29,7 +29,7 @@ func main() {
 	filesHandler := handlers.NewFilesHandler(store, storageStore)
 	domainsHandler := handlers.NewDomainsHandler(cfg, storageStore)
 	emailProfilesHandler := handlers.NewEmailProfilesHandler(storageStore)
-	authHandler := handlers.NewAuthHandler(storageStore)
+	authHandler := handlers.NewAuthHandler(cfg, storageStore)
 
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)

@@ -16,6 +16,7 @@ export type AuthSessionResponse = {
   user?: AuthUser
   csrfToken?: string
   bootstrap: AuthBootstrap
+  domainManagementEnabled: boolean
 }
 
 export type AllowlistEntry = {
