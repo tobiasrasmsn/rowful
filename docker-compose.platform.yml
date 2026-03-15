@@ -1,0 +1,27 @@
+# Platform deploy - no Caddy
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      PORT: ${BACKEND_PORT:-8080}
+      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-25}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost}
+      DB_PATH: ${DB_PATH:-/data/rowful.db}
+      UPLOAD_DIR: ${UPLOAD_DIR:-/data/uploads}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY}
+      PUBLIC_IPS: ${PUBLIC_IPS:-}
+    expose:
+      - "8080"
+    volumes:
+      - ./data:/data
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    depends_on:
+      - backend
+    ports:
+      - "${HTTP_PORT:-80}:80"

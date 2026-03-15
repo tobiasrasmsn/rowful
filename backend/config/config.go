@@ -36,7 +36,7 @@ func Load() Config {
 		UploadDir:        getEnv("UPLOAD_DIR", "./uploads"),
 		AppEncryptionKey: strings.TrimSpace(os.Getenv("APP_ENCRYPTION_KEY")),
 		PublicIPs:        loadPublicIPs(),
-		CaddyAdminURL:    getEnv("CADDY_ADMIN_URL", "http://caddy:2019"),
+		CaddyAdminURL:    getEnvAllowEmpty("CADDY_ADMIN_URL", ""),
 		CaddyConfigPath:  getEnv("CADDY_CONFIG_PATH", "/etc/caddy/Caddyfile"),
 		CaddySitesPath:   getEnv("CADDY_SITES_PATH", "/etc/caddy/sites"),
 		ReadTimeout:      getEnvDuration("READ_TIMEOUT", 30*time.Second),
@@ -51,6 +51,14 @@ func getEnv(key, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func getEnvAllowEmpty(key, fallback string) string {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback
+	}
+	return strings.TrimSpace(value)
 }
 
 func getEnvInt64(key string, fallback int64) int64 {

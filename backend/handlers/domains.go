@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -35,6 +36,8 @@ type manageDomainRequest struct {
 type caddyAdaptResponse struct {
 	Result json.RawMessage `json:"result"`
 }
+
+var errCaddyUnavailable = errors.New("custom domain provisioning is unavailable because Caddy is not configured")
 
 func NewDomainsHandler(cfg config.Config, storageStore *storage.Store) DomainsHandler {
 	return DomainsHandler{
@@ -72,6 +75,11 @@ func (h DomainsHandler) Check(w http.ResponseWriter, r *http.Request) {
 func (h DomainsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	domain, ok := decodeDomainRequest(w, r)
 	if !ok {
+		return
+	}
+
+	if err := h.ensureCaddyProvisioningAvailable(); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, models.ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -203,6 +211,10 @@ func (h DomainsHandler) lookupDomain(domain string) (models.DomainCheckResult, e
 }
 
 func (h DomainsHandler) syncCaddyConfig() error {
+	if err := h.ensureCaddyProvisioningAvailable(); err != nil {
+		return err
+	}
+
 	domains, err := h.storage.ListManagedDomains()
 	if err != nil {
 		return fmt.Errorf("failed to load managed domains: %w", err)
@@ -270,6 +282,19 @@ func (h DomainsHandler) syncCaddyConfig() error {
 		return fmt.Errorf("caddy reload failed: %s", strings.TrimSpace(string(loadBody)))
 	}
 
+	return nil
+}
+
+func (h DomainsHandler) ensureCaddyProvisioningAvailable() error {
+	if strings.TrimSpace(h.cfg.CaddyAdminURL) == "" {
+		return errCaddyUnavailable
+	}
+	if strings.TrimSpace(h.cfg.CaddyConfigPath) == "" {
+		return fmt.Errorf("%w: CADDY_CONFIG_PATH is not set", errCaddyUnavailable)
+	}
+	if strings.TrimSpace(h.cfg.CaddySitesPath) == "" {
+		return fmt.Errorf("%w: CADDY_SITES_PATH is not set", errCaddyUnavailable)
+	}
 	return nil
 }
 
