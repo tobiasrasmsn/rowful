@@ -20,7 +20,7 @@ services:
         aliases:
           - backend
     volumes:
-      - ./data:/data
+      - rowful-data:/data
 
   frontend:
     build:
@@ -35,3 +35,6 @@ services:
 
 networks:
   app:
+
+volumes:
+  rowful-data:
