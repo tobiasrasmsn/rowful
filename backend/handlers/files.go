@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -229,7 +228,7 @@ func (h FilesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filePath, err := h.storage.DeleteWorkbook(id)
+	_, err := h.storage.DeleteWorkbook(id)
 	if err != nil {
 		if err == storage.ErrNotFound {
 			writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "file not found"})
@@ -240,9 +239,6 @@ func (h FilesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.cache.DeleteByID(id)
-	if filePath != "" {
-		_ = os.Remove(filePath)
-	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

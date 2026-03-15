@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -123,24 +122,7 @@ func (h UploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	id := uuid.NewString()
 	workbookMeta := cache.BuildWorkbookMeta(id, header.Filename, fileHash, sheets)
 
-	userUploadDir := filepath.Join(h.cfg.UploadDir, user.ID)
-	if err := os.MkdirAll(userUploadDir, 0o755); err != nil {
-		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to prepare upload directory"})
-		return
-	}
-	filePath := filepath.Join(userUploadDir, id+".xlsx")
-	if _, err := os.Stat(filePath); err != nil {
-		if !os.IsNotExist(err) {
-			writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to inspect upload storage"})
-			return
-		}
-		if writeErr := os.WriteFile(filePath, fileBytes, 0o644); writeErr != nil {
-			writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to persist uploaded file"})
-			return
-		}
-	}
-
-	if err := h.storage.SaveWorkbook(user.ID, workbookMeta, sheets, filePath); err != nil {
+	if err := h.storage.SaveWorkbook(user.ID, workbookMeta, sheets, ""); err != nil {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to persist workbook"})
 		return
 	}

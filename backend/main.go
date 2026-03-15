@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -19,9 +18,6 @@ import (
 func main() {
 	cfg := config.Load()
 	store := cache.New()
-	if err := os.MkdirAll(cfg.UploadDir, 0o755); err != nil {
-		log.Fatal(fmt.Errorf("failed to create upload directory: %w", err))
-	}
 	storageStore, err := storage.New(cfg.DatabasePath, cfg.AppEncryptionKey)
 	if err != nil {
 		log.Fatal(fmt.Errorf("failed to initialize sqlite storage: %w", err))
