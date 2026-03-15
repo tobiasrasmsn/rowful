@@ -12,7 +12,9 @@ export function SheetFindCard() {
   const setSearch = useSheetStore((state) => state.setSearch)
   const closeFind = useSheetStore((state) => state.closeFind)
   const findMatchCount = useSheetStore((state) => state.findMatchCount)
-  const findActiveMatchIndex = useSheetStore((state) => state.findActiveMatchIndex)
+  const findActiveMatchIndex = useSheetStore(
+    (state) => state.findActiveMatchIndex
+  )
   const requestFindNavigation = useSheetStore(
     (state) => state.requestFindNavigation
   )

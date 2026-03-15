@@ -23,7 +23,9 @@ export function Toolbar() {
     <TooltipProvider>
       <div className="flex h-11 items-center gap-2 border-b border-border bg-background px-2">
         <span className="min-w-0 truncate text-xs text-muted-foreground">
-          {workbook ? getDisplayFileName(workbook.fileName) : "No workbook loaded"}
+          {workbook
+            ? getDisplayFileName(workbook.fileName)
+            : "No workbook loaded"}
         </span>
         <Separator orientation="vertical" className="mx-1 h-6" />
 
@@ -41,7 +43,11 @@ export function Toolbar() {
           <Separator orientation="vertical" className="mx-1 h-6" />
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="icon-sm" onClick={() => setZoom(zoom - 10)}>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={() => setZoom(zoom - 10)}
+              >
                 <Minus className="size-4" />
               </Button>
             </TooltipTrigger>
@@ -52,7 +58,11 @@ export function Toolbar() {
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="icon-sm" onClick={() => setZoom(zoom + 10)}>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={() => setZoom(zoom + 10)}
+              >
                 <Plus className="size-4" />
               </Button>
             </TooltipTrigger>

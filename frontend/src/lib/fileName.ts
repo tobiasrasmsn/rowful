@@ -20,9 +20,13 @@ const splitFileName = (fileName: string): FileNameParts => {
   }
 }
 
-export const getDisplayFileName = (fileName: string) => splitFileName(fileName).baseName
+export const getDisplayFileName = (fileName: string) =>
+  splitFileName(fileName).baseName
 
-export const buildRenamedFileName = (currentFileName: string, nextBaseName: string) => {
+export const buildRenamedFileName = (
+  currentFileName: string,
+  nextBaseName: string
+) => {
   const trimmedBaseName = nextBaseName.trim()
   if (!trimmedBaseName) {
     return currentFileName

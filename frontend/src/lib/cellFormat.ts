@@ -17,7 +17,9 @@ const currencyFormatterCache = new Map<string, Intl.NumberFormat>()
 
 const normalizeCurrency = (currency?: string) => {
   const normalized = currency?.trim().toUpperCase()
-  return normalized && /^[A-Z]{3}$/.test(normalized) ? normalized : DEFAULT_CURRENCY
+  return normalized && /^[A-Z]{3}$/.test(normalized)
+    ? normalized
+    : DEFAULT_CURRENCY
 }
 
 const getCurrencyFormatter = (currency?: string) => {

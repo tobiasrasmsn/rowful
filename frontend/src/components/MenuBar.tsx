@@ -60,7 +60,9 @@ export function MenuBar() {
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm">File</Button>
+          <Button variant="ghost" size="sm">
+            File
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
           <DropdownMenuLabel>Workbook</DropdownMenuLabel>
@@ -91,7 +93,9 @@ export function MenuBar() {
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm">Edit</Button>
+          <Button variant="ghost" size="sm">
+            Edit
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
           <DropdownMenuItem disabled>Undo</DropdownMenuItem>
@@ -104,21 +108,23 @@ export function MenuBar() {
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm">View</Button>
+          <Button variant="ghost" size="sm">
+            View
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
-          <DropdownMenuCheckboxItem checked>Grid Lines</DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem checked>Formula Bar</DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked>
+            Grid Lines
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked>
+            Formula Bar
+          </DropdownMenuCheckboxItem>
           <DropdownMenuItem disabled>Freeze Panes</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
       <div className="ml-auto">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate("/files")}
-        >
+        <Button variant="outline" size="sm" onClick={() => navigate("/files")}>
           {location.pathname.startsWith("/files") ? "Files" : "Browse Files"}
         </Button>
       </div>

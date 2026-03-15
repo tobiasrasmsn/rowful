@@ -2576,14 +2576,16 @@ export function Grid() {
 
   const showMobileDockFeedback = useCallback(
     (action: "copy" | "paste" | "cut") => {
-    setMobileDockFeedback(action)
-    if (mobileDockFeedbackTimeoutRef.current !== null) {
-      window.clearTimeout(mobileDockFeedbackTimeoutRef.current)
-    }
-    mobileDockFeedbackTimeoutRef.current = window.setTimeout(() => {
-      setMobileDockFeedback((current) => (current === action ? null : current))
-      mobileDockFeedbackTimeoutRef.current = null
-    }, MOBILE_DOCK_FEEDBACK_DURATION_MS)
+      setMobileDockFeedback(action)
+      if (mobileDockFeedbackTimeoutRef.current !== null) {
+        window.clearTimeout(mobileDockFeedbackTimeoutRef.current)
+      }
+      mobileDockFeedbackTimeoutRef.current = window.setTimeout(() => {
+        setMobileDockFeedback((current) =>
+          current === action ? null : current
+        )
+        mobileDockFeedbackTimeoutRef.current = null
+      }, MOBILE_DOCK_FEEDBACK_DURATION_MS)
     },
     []
   )
@@ -2748,7 +2750,10 @@ export function Grid() {
 
     return () => {
       window.removeEventListener(GRID_COPY_SELECTION_EVENT, handleExternalCopy)
-      window.removeEventListener(GRID_PASTE_SELECTION_EVENT, handleExternalPaste)
+      window.removeEventListener(
+        GRID_PASTE_SELECTION_EVENT,
+        handleExternalPaste
+      )
     }
   }, [handleCopy, handlePasteAt, selectedCol, selectedRow])
 
@@ -3156,8 +3161,8 @@ export function Grid() {
             <div
               ref={gridContainerRef}
               className={`sheet-grid relative h-full${
-                formulaSelection ? " formula-selection" : ""
-              }${showGridLines ? "" : " hide-grid-lines"}`}
+                formulaSelection ? "formula-selection" : ""
+              }${showGridLines ? "" : "hide-grid-lines"}`}
               onPointerDownCapture={(event) => {
                 setFormattingPopoverOpen(false)
                 if (event.button !== 0) {
