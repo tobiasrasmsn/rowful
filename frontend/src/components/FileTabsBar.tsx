@@ -7,6 +7,7 @@ import {
 } from "@/lib/fileName"
 import {
   GRID_COPY_SELECTION_EVENT,
+  GRID_OPEN_FORMATTING_EVENT,
   GRID_PASTE_SELECTION_EVENT,
 } from "@/lib/gridEvents"
 import {
@@ -276,6 +277,8 @@ export function FileTabsBar({
   )
   const showGridLines = useSheetStore((state) => state.showGridLines)
   const setShowGridLines = useSheetStore((state) => state.setShowGridLines)
+  const showToolbar = useSheetStore((state) => state.showToolbar)
+  const setShowToolbar = useSheetStore((state) => state.setShowToolbar)
   const selectedRow = useSheetStore((state) => state.selectedRow)
   const selectedCol = useSheetStore((state) => state.selectedCol)
   const selectedRange = useSheetStore((state) => state.selectedRange)
@@ -951,7 +954,13 @@ export function FileTabsBar({
         void redo()
         return
       }
-      if (key === "f") {
+      if (key === "f" && event.shiftKey) {
+        event.preventDefault()
+        event.stopPropagation()
+        dispatchGridEvent(GRID_OPEN_FORMATTING_EVENT)
+        return
+      }
+      if (key === "f" && !event.shiftKey) {
         event.preventDefault()
         event.stopPropagation()
         openFind()
@@ -1414,6 +1423,21 @@ export function FileTabsBar({
                           </div>
                           <span className="text-xs font-medium text-muted-foreground">
                             {showGridLines ? "On" : "Off"}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowToolbar(!showToolbar)}
+                          className="flex w-full items-center justify-between rounded-lg border border-border px-3 py-2 text-left transition-colors hover:bg-muted/40"
+                        >
+                          <div>
+                            <div className="text-sm font-medium">Toolbar</div>
+                            <div className="text-xs text-muted-foreground">
+                              Show inline formatting controls above the grid
+                            </div>
+                          </div>
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {showToolbar ? "On" : "Off"}
                           </span>
                         </button>
                       </div>

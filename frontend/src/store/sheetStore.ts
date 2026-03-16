@@ -76,6 +76,7 @@ type CellUpdateInput = {
   col: number
   value: string
 }
+type SelectionTargetResolver = () => Promise<SelectionTarget | null>
 
 type SheetState = {
   workbook: Workbook | null
@@ -91,6 +92,7 @@ type SheetState = {
   selectedCol: number
   selectedCell: SelectedCell
   selectedStyle: CellStyle
+  selectionTargetResolver: SelectionTargetResolver | null
   historyPast: HistoryEntry[]
   historyFuture: HistoryEntry[]
   isLoading: boolean
@@ -98,6 +100,7 @@ type SheetState = {
   zoom: number
   showCellInspector: boolean
   showGridLines: boolean
+  showToolbar: boolean
   isFindOpen: boolean
   findMatchCount: number
   findActiveMatchIndex: number
@@ -134,11 +137,21 @@ type SheetState = {
   redo: () => Promise<void>
   applyStyle: (patch: Partial<CellStyle>) => Promise<void>
   clearFormatting: () => Promise<void>
+  clearFormattingForTarget: (target: SelectionTarget) => Promise<void>
   clearSelectedValues: () => Promise<void>
   setNumberFormat: (kind: string) => Promise<void>
+  setNumberFormatForTarget: (
+    target: SelectionTarget,
+    kind: string
+  ) => Promise<void>
   setZoom: (zoom: number) => void
   setShowCellInspector: (visible: boolean) => void
   setShowGridLines: (visible: boolean) => void
+  setShowToolbar: (visible: boolean) => void
+  applyStyleToTarget: (
+    target: SelectionTarget,
+    patch: Partial<CellStyle>
+  ) => Promise<void>
   openFind: () => void
   closeFind: () => void
   setFindStatus: (matchCount: number, activeMatchIndex: number) => void
@@ -154,6 +167,9 @@ type SheetState = {
   deleteStoredFolder: (id: string) => Promise<void>
   setSelectedCell: (cell: SelectedCell) => void
   setSelectedRange: (range: CellRange | null) => void
+  setSelectionTargetResolver: (
+    resolver: SelectionTargetResolver | null
+  ) => void
   setSearch: (value: string) => void
   setFileCurrency: (currency: string) => Promise<void>
   setFileEmailProfile: (emailProfileId: string) => Promise<void>
@@ -216,6 +232,7 @@ const MAX_HISTORY_RANGE_AREA = 4096
 const CELL_UPDATE_BATCH_CONCURRENCY = 4
 const SHEET_FONT_FAMILIES_STORAGE_KEY = "rowful:sheet-font-families:v1"
 const WORKBOOK_VIEW_PREFS_STORAGE_KEY = "rowful:workbook-view-prefs:v1"
+const GLOBAL_TOOLBAR_STORAGE_KEY = "rowful:show-toolbar:v1"
 const DEFAULT_SHEET_FONT_FAMILY = "Calibri"
 let clearValuesInFlight = false
 let refreshFilesDebounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -907,6 +924,51 @@ const getSelectionTarget = (state: {
   return { mode: "cell", row: state.selectedRow, col: state.selectedCol }
 }
 
+const normalizeSelectionTarget = (
+  target: SelectionTarget | null | undefined
+): SelectionTarget | null => {
+  if (!target) {
+    return null
+  }
+  if (target.mode === "sheet") {
+    return { mode: "sheet" }
+  }
+  if (target.mode === "row" && target.row) {
+    return { mode: "row", row: target.row }
+  }
+  if (target.mode === "column" && target.col) {
+    return { mode: "column", col: target.col }
+  }
+  if (target.mode === "range" && target.range) {
+    return { mode: "range", range: normalizeCellRange(target.range) }
+  }
+  if (target.mode === "cell" && target.row && target.col) {
+    return { mode: "cell", row: target.row, col: target.col }
+  }
+  return null
+}
+
+const resolveSelectionTargetFromState = async (state: {
+  selectionMode: SelectionMode
+  selectedRow: number
+  selectedCol: number
+  selectedRange: CellRange | null
+  selectionTargetResolver: SelectionTargetResolver | null
+}) => {
+  try {
+    const liveTarget = normalizeSelectionTarget(
+      await state.selectionTargetResolver?.()
+    )
+    if (liveTarget) {
+      return liveTarget
+    }
+  } catch {
+    // Fall back to the store selection if the live grid target is unavailable.
+  }
+
+  return getSelectionTarget(state)
+}
+
 const getLoadedCellsForTarget = (
   sheet: Sheet | null,
   target: SelectionTarget
@@ -1131,6 +1193,28 @@ const defaultWorkbookViewPrefs = (): PersistedWorkbookViewPrefs => ({
 })
 
 const normalizeZoom = (zoom: number) => Math.max(25, Math.min(300, zoom))
+
+const readPersistedShowToolbar = () => {
+  if (typeof window === "undefined") {
+    return false
+  }
+  try {
+    return window.localStorage.getItem(GLOBAL_TOOLBAR_STORAGE_KEY) === "true"
+  } catch {
+    return false
+  }
+}
+
+const writePersistedShowToolbar = (visible: boolean) => {
+  if (typeof window === "undefined") {
+    return
+  }
+  try {
+    window.localStorage.setItem(GLOBAL_TOOLBAR_STORAGE_KEY, String(visible))
+  } catch {
+    // ignore storage failures
+  }
+}
 
 const readPersistedWorkbookViewPrefs =
   (): PersistedWorkbookViewPrefsByWorkbook => {
@@ -1425,6 +1509,7 @@ export const useSheetStore = create<
   selectedCol: 1,
   selectedCell: EMPTY_CELL,
   selectedStyle: EMPTY_STYLE,
+  selectionTargetResolver: null,
   historyPast: [],
   historyFuture: [],
   isLoading: false,
@@ -1432,6 +1517,7 @@ export const useSheetStore = create<
   zoom: 100,
   showCellInspector: true,
   showGridLines: true,
+  showToolbar: readPersistedShowToolbar(),
   isFindOpen: false,
   findMatchCount: 0,
   findActiveMatchIndex: -1,
@@ -2627,12 +2713,74 @@ export const useSheetStore = create<
   },
 
   applyStyle: async (patch) => {
+    const initialState = get()
+    if (!initialState.sheet || !initialState.workbook) {
+      return
+    }
+
+    const target = await resolveSelectionTargetFromState(initialState)
+    const state = get()
+    if (!state.sheet || !state.workbook) {
+      return
+    }
+    const createMissing =
+      target.mode === "cell" ||
+      (target.mode === "range" &&
+        selectionArea(target) <= MAX_HISTORY_RANGE_AREA)
+    const optimistic = patchLoadedCells(
+      state.sheet,
+      target,
+      (cell) => ({
+        ...cell,
+        style: { ...(cell.style ?? {}), ...patch },
+      }),
+      createMissing
+    )
+    const historyEntry = buildHistoryEntry(
+      state.sheet.name,
+      state.sheet,
+      optimistic,
+      target
+    )
+
+    set({
+      sheet: optimistic,
+      selectedStyle: { ...(state.selectedStyle ?? {}), ...patch },
+      error: null,
+      historyPast: historyEntry
+        ? [...state.historyPast, historyEntry]
+        : state.historyPast,
+      historyFuture: [],
+    })
+
+    try {
+      await applyStyleRequest(state.workbook.id, {
+        sheet: state.sheet.name,
+        target,
+        patch,
+      })
+      void get().ensureWindow({
+        ...get().viewportWindow,
+        sheetName: state.sheet.name,
+        force: true,
+      })
+      await get().refreshFiles()
+    } catch (error) {
+      set({
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to persist style changes",
+      })
+    }
+  },
+
+  applyStyleToTarget: async (target, patch) => {
     const state = get()
     if (!state.sheet || !state.workbook) {
       return
     }
 
-    const target = getSelectionTarget(state)
     const createMissing =
       target.mode === "cell" ||
       (target.mode === "range" &&
@@ -2686,12 +2834,62 @@ export const useSheetStore = create<
   },
 
   clearFormatting: async () => {
+    const initialState = get()
+    if (!initialState.sheet || !initialState.workbook) {
+      return
+    }
+
+    const target = await resolveSelectionTargetFromState(initialState)
+    const state = get()
+    if (!state.sheet || !state.workbook) {
+      return
+    }
+    const optimistic = patchLoadedCells(state.sheet, target, (cell) => ({
+      ...cell,
+      style: {},
+    }))
+    const historyEntry = buildHistoryEntry(
+      state.sheet.name,
+      state.sheet,
+      optimistic,
+      target
+    )
+
+    set({
+      sheet: optimistic,
+      selectedStyle: {},
+      error: null,
+      historyPast: historyEntry
+        ? [...state.historyPast, historyEntry]
+        : state.historyPast,
+      historyFuture: [],
+    })
+
+    try {
+      await clearFormattingRange(state.workbook.id, {
+        sheet: state.sheet.name,
+        target,
+      })
+      void get().ensureWindow({
+        ...get().viewportWindow,
+        sheetName: state.sheet.name,
+        force: true,
+      })
+      await get().refreshFiles()
+    } catch (error) {
+      set({
+        error:
+          error instanceof Error ? error.message : "Failed to clear formatting",
+      })
+    }
+  },
+
+  clearFormattingForTarget: async (target) => {
     const state = get()
     if (!state.sheet || !state.workbook) {
       return
     }
 
-    const target = getSelectionTarget(state)
     const optimistic = patchLoadedCells(state.sheet, target, (cell) => ({
       ...cell,
       style: {},
@@ -2736,12 +2934,16 @@ export const useSheetStore = create<
     if (clearValuesInFlight) {
       return
     }
+    const initialState = get()
+    if (!initialState.sheet || !initialState.workbook) {
+      return
+    }
+
+    const target = await resolveSelectionTargetFromState(initialState)
     const state = get()
     if (!state.sheet || !state.workbook) {
       return
     }
-
-    const target = getSelectionTarget(state)
     const optimistic = patchLoadedCells(state.sheet, target, (cell) => ({
       ...cell,
       value: "",
@@ -2790,20 +2992,24 @@ export const useSheetStore = create<
   },
 
   setNumberFormat: async (kind) => {
+    const initialState = get()
+    if (!initialState.sheet) {
+      return
+    }
+
+    const target = await resolveSelectionTargetFromState(initialState)
     const state = get()
     if (!state.sheet) {
       return
     }
-
     const patch = formatPatch(kind)
     const nextNumFmt = patch.numFmt
     if (!nextNumFmt || nextNumFmt === "@") {
       set({ error: null })
-      await get().applyStyle(patch)
+      await get().applyStyleToTarget(target, patch)
       return
     }
 
-    const target = getSelectionTarget(state)
     const loadedCells = getLoadedCellsForTarget(state.sheet, target)
     const invalidSample = loadedCells.find(
       (cell) => !isValueValidForNumFmt(cell.value ?? "", nextNumFmt)
@@ -2817,7 +3023,37 @@ export const useSheetStore = create<
     }
 
     set({ error: null })
-    await get().applyStyle(patch)
+    await get().applyStyleToTarget(target, patch)
+  },
+
+  setNumberFormatForTarget: async (target, kind) => {
+    const state = get()
+    if (!state.sheet) {
+      return
+    }
+
+    const patch = formatPatch(kind)
+    const nextNumFmt = patch.numFmt
+    if (!nextNumFmt || nextNumFmt === "@") {
+      set({ error: null })
+      await get().applyStyleToTarget(target, patch)
+      return
+    }
+
+    const loadedCells = getLoadedCellsForTarget(state.sheet, target)
+    const invalidSample = loadedCells.find(
+      (cell) => !isValueValidForNumFmt(cell.value ?? "", nextNumFmt)
+    )
+
+    if (invalidSample) {
+      set({
+        error: `Cannot apply ${formatKindLabel(kind)} format. Selected cells include incompatible values (example: ${invalidSample.address}="${invalidSample.value}").`,
+      })
+      return
+    }
+
+    set({ error: null })
+    await get().applyStyleToTarget(target, patch)
   },
 
   setZoom: (zoom) => {
@@ -2858,6 +3094,11 @@ export const useSheetStore = create<
       showCellInspector: state.showCellInspector,
       showGridLines: visible,
     })
+  },
+
+  setShowToolbar: (visible) => {
+    set({ showToolbar: visible })
+    writePersistedShowToolbar(visible)
   },
 
   openFind: () => {
@@ -3048,6 +3289,10 @@ export const useSheetStore = create<
         normalizedRange
       ),
     })
+  },
+
+  setSelectionTargetResolver: (resolver) => {
+    set({ selectionTargetResolver: resolver })
   },
 
   createKanbanFromSelection: async (statusCol, name) => {
@@ -3804,6 +4049,7 @@ export function resetSheetStore() {
     zoom: 100,
     showCellInspector: true,
     showGridLines: true,
+    showToolbar: readPersistedShowToolbar(),
     isFindOpen: false,
     findMatchCount: 0,
     findActiveMatchIndex: -1,
