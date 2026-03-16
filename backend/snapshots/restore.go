@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -127,7 +129,7 @@ func (s *Service) Restore(ctx context.Context, runID string) error {
 }
 
 func (s *Service) downloadSnapshotArchive(ctx context.Context, client objectStorageClient, settings models.SnapshotSettings, objectKey string) (string, error) {
-	file, err := os.CreateTemp(filepath.Dir(s.cfg.DatabasePath), "rowful-restore-*.zip")
+	file, err := os.CreateTemp("", "rowful-restore-*.zip")
 	if err != nil {
 		return "", fmt.Errorf("create temporary restore archive: %w", err)
 	}
@@ -324,7 +326,7 @@ func moveDirectoryContents(sourceDir, targetDir string) error {
 		sourcePath := filepath.Join(sourceDir, entry.Name())
 		targetPath := filepath.Join(targetDir, entry.Name())
 		_ = os.RemoveAll(targetPath)
-		if err := os.Rename(sourcePath, targetPath); err != nil {
+		if err := movePath(sourcePath, targetPath); err != nil {
 			return fmt.Errorf("move %s to %s: %w", sourcePath, targetPath, err)
 		}
 	}
@@ -345,6 +347,77 @@ func clearDirectoryContents(dir string) error {
 		}
 	}
 	return nil
+}
+
+func movePath(sourcePath, targetPath string) error {
+	if err := os.Rename(sourcePath, targetPath); err == nil {
+		return nil
+	} else if !errors.Is(err, syscall.EXDEV) {
+		return err
+	}
+
+	if err := copyPath(sourcePath, targetPath); err != nil {
+		return err
+	}
+	return os.RemoveAll(sourcePath)
+}
+
+func copyPath(sourcePath, targetPath string) error {
+	info, err := os.Lstat(sourcePath)
+	if err != nil {
+		return err
+	}
+
+	if info.IsDir() {
+		if err := os.MkdirAll(targetPath, info.Mode().Perm()); err != nil {
+			return err
+		}
+		entries, err := os.ReadDir(sourcePath)
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if err := copyPath(filepath.Join(sourcePath, entry.Name()), filepath.Join(targetPath, entry.Name())); err != nil {
+				return err
+			}
+		}
+		return os.Chmod(targetPath, info.Mode().Perm())
+	}
+
+	if info.Mode()&os.ModeSymlink != 0 {
+		linkTarget, err := os.Readlink(sourcePath)
+		if err != nil {
+			return err
+		}
+		return os.Symlink(linkTarget, targetPath)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		return err
+	}
+	sourceFile, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = sourceFile.Close() }()
+
+	targetFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = targetFile.Close() }()
+
+	if _, err := io.Copy(targetFile, sourceFile); err != nil {
+		return err
+	}
+	return copyFileMetadata(targetPath, info)
+}
+
+func copyFileMetadata(targetPath string, info fs.FileInfo) error {
+	if err := os.Chmod(targetPath, info.Mode().Perm()); err != nil {
+		return err
+	}
+	return os.Chtimes(targetPath, info.ModTime(), info.ModTime())
 }
 
 func readSnapshotManifest(files []*zip.File) (snapshotManifest, error) {
