@@ -60,6 +60,11 @@ func (s *Store) GetByHash(hash string) (CachedWorkbook, bool) {
 	return s.GetByID(id)
 }
 
+func (s *Store) Clear() {
+	s.byID = sync.Map{}
+	s.byHash = sync.Map{}
+}
+
 func BuildWorkbookMeta(id, fileName, fileHash string, sheets map[string]models.Sheet) models.Workbook {
 	metas := make([]models.SheetMeta, 0, len(sheets))
 	for _, sheet := range sheets {

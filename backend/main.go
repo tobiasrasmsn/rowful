@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,15 +10,18 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"rowful/appstate"
 	"rowful/cache"
 	"rowful/config"
 	"rowful/handlers"
+	"rowful/snapshots"
 	"rowful/storage"
 )
 
 func main() {
 	cfg := config.Load()
 	store := cache.New()
+	dataGate := appstate.NewDataGate()
 	storageStore, err := storage.New(cfg.DatabasePath, cfg.AppEncryptionKey)
 	if err != nil {
 		log.Fatal(fmt.Errorf("failed to initialize sqlite storage: %w", err))
@@ -30,6 +34,9 @@ func main() {
 	domainsHandler := handlers.NewDomainsHandler(cfg, storageStore)
 	emailProfilesHandler := handlers.NewEmailProfilesHandler(storageStore)
 	authHandler := handlers.NewAuthHandler(cfg, storageStore)
+	snapshotService := snapshots.NewService(cfg, storageStore, store, dataGate)
+	snapshotService.Start(context.Background())
+	snapshotsHandler := handlers.NewSnapshotsHandler(storageStore, snapshotService)
 
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
@@ -51,58 +58,84 @@ func main() {
 	})
 
 	router.Route("/api", func(r chi.Router) {
-		r.Route("/auth", func(auth chi.Router) {
-			auth.Get("/session", authHandler.Session)
-			auth.Post("/login", authHandler.Login)
-			auth.Post("/signup", authHandler.Signup)
-			auth.Post("/logout", authHandler.Logout)
+		r.Group(func(api chi.Router) {
+			api.Use(dataGate.Middleware)
+
+			api.Route("/auth", func(auth chi.Router) {
+				auth.Get("/session", authHandler.Session)
+				auth.Post("/login", authHandler.Login)
+				auth.Post("/signup", authHandler.Signup)
+				auth.Post("/logout", authHandler.Logout)
+			})
+
+			api.Group(func(private chi.Router) {
+				private.Use(authHandler.RequireAuth)
+				private.Post("/upload", uploadHandler.Handle)
+				private.Get("/sheet/{id}", sheetHandler.Get)
+				private.Post("/sheet/{id}/cell", sheetHandler.UpdateCell)
+				private.Post("/sheet/{id}/style", sheetHandler.ApplyStyle)
+				private.Post("/sheet/{id}/clear-formatting", sheetHandler.ClearFormatting)
+				private.Post("/sheet/{id}/clear-values", sheetHandler.ClearValues)
+				private.Post("/sheet/{id}/kanban", sheetHandler.SaveKanbanRegions)
+				private.Post("/sheet/{id}/save", sheetHandler.SaveSheet)
+				private.Post("/sheet/{id}/create", sheetHandler.CreateSheet)
+				private.Post("/sheet/{id}/rename", sheetHandler.RenameSheet)
+				private.Post("/sheet/{id}/delete", sheetHandler.DeleteSheet)
+				private.Post("/sheet/{id}/resize", sheetHandler.ResizeSheet)
+				private.Post("/sheet/{id}/insert-rows", sheetHandler.InsertRows)
+				private.Post("/sheet/{id}/insert-cols", sheetHandler.InsertCols)
+				private.Post("/sheet/{id}/delete-rows", sheetHandler.DeleteRows)
+				private.Post("/sheet/{id}/delete-cols", sheetHandler.DeleteCols)
+				private.Get("/files", filesHandler.List)
+				private.Post("/files", filesHandler.Create)
+				private.Get("/files/recent", filesHandler.Recent)
+				private.Post("/files/folders", filesHandler.CreateFolder)
+				private.Get("/email-profiles", emailProfilesHandler.List)
+				private.Post("/email-profiles", emailProfilesHandler.Create)
+				private.Patch("/email-profiles/{id}", emailProfilesHandler.Update)
+				private.Delete("/email-profiles/{id}", emailProfilesHandler.Delete)
+				private.Post("/files/{id}/open", filesHandler.Open)
+				private.Post("/files/{id}/move", filesHandler.MoveFile)
+				private.Get("/files/{id}/download", filesHandler.Download)
+				private.Get("/files/{id}/settings", filesHandler.GetSettings)
+				private.Patch("/files/{id}/settings", filesHandler.UpdateSettings)
+				private.Post("/files/{id}/email/send", filesHandler.SendEmail)
+				private.Post("/files/{id}/email/test", filesHandler.SendTestEmail)
+				private.Patch("/files/{id}", filesHandler.Rename)
+				private.Delete("/files/{id}", filesHandler.Delete)
+				private.Patch("/files/folders/{id}", filesHandler.RenameFolder)
+				private.Post("/files/folders/{id}/move", filesHandler.MoveFolder)
+				private.Delete("/files/folders/{id}", filesHandler.DeleteFolder)
+
+				private.Group(func(admin chi.Router) {
+					admin.Use(authHandler.RequireAdmin)
+					admin.Get("/domains", domainsHandler.List)
+					admin.Post("/domains/check", domainsHandler.Check)
+					admin.Post("/domains", domainsHandler.Create)
+					admin.Get("/admin/signup-policy", authHandler.GetSignupPolicy)
+					admin.Patch("/admin/signup-policy", authHandler.UpdateSignupPolicy)
+					admin.Get("/admin/allowlist", authHandler.ListAllowlist)
+					admin.Post("/admin/allowlist", authHandler.AddAllowlist)
+					admin.Delete("/admin/allowlist", authHandler.DeleteAllowlist)
+					admin.Get("/admin/snapshots", snapshotsHandler.Get)
+					admin.Patch("/admin/snapshots", snapshotsHandler.Update)
+					admin.Post("/admin/snapshots/run", snapshotsHandler.Run)
+				})
+			})
 		})
 
-		r.Group(func(private chi.Router) {
-			private.Use(authHandler.RequireAuth)
-			private.Post("/upload", uploadHandler.Handle)
-			private.Get("/sheet/{id}", sheetHandler.Get)
-			private.Post("/sheet/{id}/cell", sheetHandler.UpdateCell)
-			private.Post("/sheet/{id}/style", sheetHandler.ApplyStyle)
-			private.Post("/sheet/{id}/clear-formatting", sheetHandler.ClearFormatting)
-			private.Post("/sheet/{id}/clear-values", sheetHandler.ClearValues)
-			private.Post("/sheet/{id}/kanban", sheetHandler.SaveKanbanRegions)
-			private.Post("/sheet/{id}/save", sheetHandler.SaveSheet)
-			private.Post("/sheet/{id}/create", sheetHandler.CreateSheet)
-			private.Post("/sheet/{id}/rename", sheetHandler.RenameSheet)
-			private.Post("/sheet/{id}/delete", sheetHandler.DeleteSheet)
-			private.Post("/sheet/{id}/resize", sheetHandler.ResizeSheet)
-			private.Post("/sheet/{id}/insert-rows", sheetHandler.InsertRows)
-			private.Post("/sheet/{id}/insert-cols", sheetHandler.InsertCols)
-			private.Post("/sheet/{id}/delete-rows", sheetHandler.DeleteRows)
-			private.Post("/sheet/{id}/delete-cols", sheetHandler.DeleteCols)
-			private.Get("/files", filesHandler.List)
-			private.Post("/files", filesHandler.Create)
-			private.Get("/files/recent", filesHandler.Recent)
-			private.Get("/email-profiles", emailProfilesHandler.List)
-			private.Post("/email-profiles", emailProfilesHandler.Create)
-			private.Patch("/email-profiles/{id}", emailProfilesHandler.Update)
-			private.Delete("/email-profiles/{id}", emailProfilesHandler.Delete)
-			private.Post("/files/{id}/open", filesHandler.Open)
-			private.Get("/files/{id}/download", filesHandler.Download)
-			private.Get("/files/{id}/settings", filesHandler.GetSettings)
-			private.Patch("/files/{id}/settings", filesHandler.UpdateSettings)
-			private.Post("/files/{id}/email/send", filesHandler.SendEmail)
-			private.Post("/files/{id}/email/test", filesHandler.SendTestEmail)
-			private.Patch("/files/{id}", filesHandler.Rename)
-			private.Delete("/files/{id}", filesHandler.Delete)
-
-			private.Group(func(admin chi.Router) {
-				admin.Use(authHandler.RequireAdmin)
-				admin.Get("/domains", domainsHandler.List)
-				admin.Post("/domains/check", domainsHandler.Check)
-				admin.Post("/domains", domainsHandler.Create)
-				admin.Get("/admin/signup-policy", authHandler.GetSignupPolicy)
-				admin.Patch("/admin/signup-policy", authHandler.UpdateSignupPolicy)
-				admin.Get("/admin/allowlist", authHandler.ListAllowlist)
-				admin.Post("/admin/allowlist", authHandler.AddAllowlist)
-				admin.Delete("/admin/allowlist", authHandler.DeleteAllowlist)
-			})
+		r.Post("/admin/snapshots/restore", func(w http.ResponseWriter, r *http.Request) {
+			dataGate.RLock()
+			authorizedRequest, status, clearCookie, err := authHandler.AuthorizeAdminRequest(r)
+			dataGate.RUnlock()
+			if err != nil {
+				if clearCookie {
+					handlers.ClearSessionCookie(w, r)
+				}
+				handlers.WriteJSON(w, status, map[string]string{"error": err.Error()})
+				return
+			}
+			snapshotsHandler.Restore(w, authorizedRequest)
 		})
 	})
 

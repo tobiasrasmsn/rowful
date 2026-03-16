@@ -35,7 +35,25 @@ type updateFileSettingsRequest struct {
 }
 
 type createFileRequest struct {
+	Name     string `json:"name"`
+	FolderID string `json:"folderId"`
+}
+
+type createFolderRequest struct {
+	Name     string `json:"name"`
+	ParentID string `json:"parentId"`
+}
+
+type renameFolderRequest struct {
 	Name string `json:"name"`
+}
+
+type moveFileRequest struct {
+	FolderID string `json:"folderId"`
+}
+
+type moveFolderRequest struct {
+	ParentID string `json:"parentId"`
 }
 
 func NewFilesHandler(cacheStore *cache.Store, storageStore *storage.Store) FilesHandler {
@@ -84,7 +102,15 @@ func (h FilesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	workbookMeta := cache.BuildWorkbookMeta(id, fileName, fileHash, sheets)
-	if err := h.storage.SaveWorkbook(user.ID, workbookMeta, sheets, ""); err != nil {
+	if err := h.storage.SaveWorkbook(user.ID, workbookMeta, sheets, req.FolderID); err != nil {
+		if err == storage.ErrNotFound {
+			writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "folder not found"})
+			return
+		}
+		if err == storage.ErrInvalid {
+			writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid folder"})
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to persist workbook"})
 		return
 	}
@@ -115,7 +141,46 @@ func (h FilesHandler) List(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list files"})
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FilesResponse{Files: files})
+	folders, err := h.storage.ListFoldersForUser(user.ID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list folders"})
+		return
+	}
+	writeJSON(w, http.StatusOK, models.FilesResponse{Files: files, Folders: folders})
+}
+
+func (h FilesHandler) CreateFolder(w http.ResponseWriter, r *http.Request) {
+	user, ok := CurrentUser(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, models.ErrorResponse{Error: "authentication required"})
+		return
+	}
+
+	var req createFolderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid JSON body"})
+		return
+	}
+
+	folder, err := h.storage.CreateFolder(user.ID, req.Name, req.ParentID)
+	if err != nil {
+		switch err {
+		case storage.ErrInvalid:
+			writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid folder name"})
+			return
+		case storage.ErrNotFound:
+			writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "parent folder not found"})
+			return
+		case storage.ErrConflict:
+			writeJSON(w, http.StatusConflict, models.ErrorResponse{Error: "a folder with that name already exists here"})
+			return
+		default:
+			writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to create folder"})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, folder)
 }
 
 func (h FilesHandler) Recent(w http.ResponseWriter, r *http.Request) {
@@ -217,6 +282,42 @@ func (h FilesHandler) Rename(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (h FilesHandler) MoveFile(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing file id"})
+		return
+	}
+	user, err := requireWorkbookAccess(r, h.storage, id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "file not found"})
+		return
+	}
+
+	var req moveFileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid JSON body"})
+		return
+	}
+
+	if err := h.storage.MoveWorkbook(user.ID, id, req.FolderID); err != nil {
+		switch err {
+		case storage.ErrInvalid:
+			writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid folder"})
+			return
+		case storage.ErrNotFound:
+			writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "folder not found"})
+			return
+		default:
+			writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to move file"})
+			return
+		}
+	}
+
+	h.cache.DeleteByID(id)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (h FilesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -239,6 +340,113 @@ func (h FilesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.cache.DeleteByID(id)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h FilesHandler) RenameFolder(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing folder id"})
+		return
+	}
+	if _, err := requireFolderAccess(r, h.storage, id); err != nil {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "folder not found"})
+		return
+	}
+	user, _ := CurrentUser(r)
+
+	var req renameFolderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid JSON body"})
+		return
+	}
+
+	folder, err := h.storage.RenameFolder(user.ID, id, req.Name)
+	if err != nil {
+		switch err {
+		case storage.ErrInvalid:
+			writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid folder name"})
+			return
+		case storage.ErrNotFound:
+			writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "folder not found"})
+			return
+		case storage.ErrConflict:
+			writeJSON(w, http.StatusConflict, models.ErrorResponse{Error: "a folder with that name already exists here"})
+			return
+		default:
+			writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to rename folder"})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, folder)
+}
+
+func (h FilesHandler) MoveFolder(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing folder id"})
+		return
+	}
+	user, err := requireFolderAccess(r, h.storage, id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "folder not found"})
+		return
+	}
+
+	var req moveFolderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid JSON body"})
+		return
+	}
+
+	folder, err := h.storage.MoveFolder(user.ID, id, req.ParentID)
+	if err != nil {
+		switch err {
+		case storage.ErrInvalid:
+			writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid folder destination"})
+			return
+		case storage.ErrNotFound:
+			writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "folder not found"})
+			return
+		case storage.ErrConflict:
+			writeJSON(w, http.StatusConflict, models.ErrorResponse{Error: "a folder with that name already exists here"})
+			return
+		default:
+			writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to move folder"})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, folder)
+}
+
+func (h FilesHandler) DeleteFolder(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "missing folder id"})
+		return
+	}
+	user, err := requireFolderAccess(r, h.storage, id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "folder not found"})
+		return
+	}
+
+	if err := h.storage.DeleteFolder(user.ID, id); err != nil {
+		switch err {
+		case storage.ErrInvalid:
+			writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid folder"})
+			return
+		case storage.ErrNotFound:
+			writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "folder not found"})
+			return
+		default:
+			writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to delete folder"})
+			return
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

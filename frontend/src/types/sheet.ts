@@ -153,14 +153,24 @@ export type FileEntry = {
   id: string
   fileName: string
   filePath: string
+  folderId: string
   fileHash: string
   createdAt: string
   updatedAt: string
   lastOpenedAt: string
 }
 
+export type FolderEntry = {
+  id: string
+  name: string
+  parentId: string
+  createdAt: string
+  updatedAt: string
+}
+
 export type FilesResponse = {
   files: FileEntry[]
+  folders: FolderEntry[]
 }
 
 export type ErrorResponse = {

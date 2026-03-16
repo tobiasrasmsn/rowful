@@ -146,14 +146,24 @@ type FileEntry struct {
 	ID           string    `json:"id"`
 	FileName     string    `json:"fileName"`
 	FilePath     string    `json:"filePath"`
+	FolderID     string    `json:"folderId"`
 	FileHash     string    `json:"fileHash"`
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
 	LastOpenedAt time.Time `json:"lastOpenedAt"`
 }
 
+type FolderEntry struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	ParentID  string    `json:"parentId"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 type FilesResponse struct {
-	Files []FileEntry `json:"files"`
+	Files   []FileEntry   `json:"files"`
+	Folders []FolderEntry `json:"folders"`
 }
 
 type ErrorResponse struct {

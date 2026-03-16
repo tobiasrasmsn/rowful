@@ -4,6 +4,7 @@ import {
   applyStyle as applyStyleRequest,
   clearFormattingRange,
   clearValuesRange,
+  createFolder as createFolderRequest,
   createWorkbook as createWorkbookRequest,
   createSheet as createSheetRequest,
   deleteCols as deleteColsRequest,
@@ -16,8 +17,12 @@ import {
   insertRows as insertRowsRequest,
   listFiles,
   listRecentFiles,
+  moveFile as moveFileRequest,
+  moveFolder as moveFolderRequest,
   openFile,
+  removeFolder,
   removeFile,
+  renameFolder as renameFolderRequest,
   renameFile,
   resizeSheet as resizeSheetRequest,
   renameSheet as renameSheetRequest,
@@ -36,6 +41,7 @@ import type {
   CellStyle,
   FileSettings,
   FileEntry,
+  FolderEntry,
   KanbanRegion,
   SelectionTarget,
   Sheet,
@@ -75,6 +81,7 @@ type SheetState = {
   workbook: Workbook | null
   sheet: Sheet | null
   files: FileEntry[]
+  folders: FolderEntry[]
   recentFiles: FileEntry[]
   selectedSheetName: string
   activeWorkspaceTab: string
@@ -100,8 +107,8 @@ type SheetState = {
   search: string
   fileSettings: FileSettings
   kanbanRegions: KanbanRegion[]
-  createWorkbook: (name?: string) => Promise<Workbook | null>
-  uploadFile: (file: File) => Promise<void>
+  createWorkbook: (name?: string, folderId?: string) => Promise<Workbook | null>
+  uploadFile: (file: File, folderId?: string) => Promise<void>
   openWorkbookByID: (id: string) => Promise<void>
   loadSheet: (sheetName: string) => Promise<void>
   setActiveWorkspaceTab: (tab: string) => void
@@ -138,8 +145,13 @@ type SheetState = {
   requestFindNavigation: (direction: "next" | "prev") => void
   refreshFiles: () => Promise<void>
   refreshRecentFiles: () => Promise<void>
+  createFolder: (name: string, parentId?: string) => Promise<FolderEntry | null>
+  renameStoredFolder: (id: string, name: string) => Promise<void>
+  moveStoredFile: (id: string, folderId?: string) => Promise<void>
+  moveStoredFolder: (id: string, parentId?: string) => Promise<void>
   renameStoredFile: (id: string, name: string) => Promise<void>
   deleteStoredFile: (id: string) => Promise<void>
+  deleteStoredFolder: (id: string) => Promise<void>
   setSelectedCell: (cell: SelectedCell) => void
   setSelectedRange: (range: CellRange | null) => void
   setSearch: (value: string) => void
@@ -228,6 +240,27 @@ type PersistedWorkbookViewPrefsByWorkbook = Record<
   PersistedWorkbookViewPrefs
 >
 type KanbanCardColor = "none" | "green" | "red" | "yellow" | "purple"
+
+const collectFolderTreeIDs = (
+  folders: FolderEntry[],
+  rootID: string
+): Set<string> => {
+  const folderIDs = new Set<string>([rootID])
+  let changed = true
+
+  while (changed) {
+    changed = false
+    for (const folder of folders) {
+      if (folderIDs.has(folder.id) || !folderIDs.has(folder.parentId)) {
+        continue
+      }
+      folderIDs.add(folder.id)
+      changed = true
+    }
+  }
+
+  return folderIDs
+}
 
 const toColumnLabel = (index: number) => {
   let label = ""
@@ -1411,13 +1444,19 @@ export const useSheetStore = create<
   loadedWindows: [],
   loadingWindows: [],
   viewportWindow: DEFAULT_WINDOW,
+  folders: [],
 
-  createWorkbook: async (name) => {
+  createWorkbook: async (name, folderId) => {
     set({ isLoading: true, error: null })
     try {
       const trimmedName = name?.trim()
       const payload = await createWorkbookRequest(
-        trimmedName ? { name: trimmedName } : undefined
+        trimmedName || folderId
+          ? {
+              ...(trimmedName ? { name: trimmedName } : {}),
+              ...(folderId ? { folderId } : {}),
+            }
+          : undefined
       )
       const viewPrefs = getPersistedWorkbookViewPrefs(payload.workbook.id)
       set({
@@ -1467,10 +1506,10 @@ export const useSheetStore = create<
     }
   },
 
-  uploadFile: async (file) => {
+  uploadFile: async (file, folderId) => {
     set({ isLoading: true, error: null })
     try {
-      const payload = await uploadWorkbook(file)
+      const payload = await uploadWorkbook(file, folderId)
       const viewPrefs = getPersistedWorkbookViewPrefs(payload.workbook.id)
       set({
         workbook: payload.workbook,
@@ -2857,7 +2896,7 @@ export const useSheetStore = create<
   refreshFiles: async () => {
     try {
       const payload = await listFiles()
-      set({ files: payload.files })
+      set({ files: payload.files, folders: payload.folders })
     } catch {
       // ignore background refresh errors
     }
@@ -2869,6 +2908,54 @@ export const useSheetStore = create<
       set({ recentFiles: payload.files })
     } catch {
       // ignore background refresh errors
+    }
+  },
+
+  createFolder: async (name, parentId) => {
+    try {
+      const folder = await createFolderRequest({ name, parentId })
+      await get().refreshFiles()
+      return folder
+    } catch (error) {
+      set({
+        error:
+          error instanceof Error ? error.message : "Failed to create folder",
+      })
+      return null
+    }
+  },
+
+  renameStoredFolder: async (id, name) => {
+    try {
+      await renameFolderRequest(id, { name })
+      await get().refreshFiles()
+    } catch (error) {
+      set({
+        error:
+          error instanceof Error ? error.message : "Failed to rename folder",
+      })
+    }
+  },
+
+  moveStoredFile: async (id, folderId) => {
+    try {
+      await moveFileRequest(id, folderId ? { folderId } : {})
+      await Promise.all([get().refreshFiles(), get().refreshRecentFiles()])
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : "Failed to move file",
+      })
+    }
+  },
+
+  moveStoredFolder: async (id, parentId) => {
+    try {
+      await moveFolderRequest(id, parentId ? { parentId } : {})
+      await get().refreshFiles()
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : "Failed to move folder",
+      })
     }
   },
 
@@ -2907,6 +2994,39 @@ export const useSheetStore = create<
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : "Failed to delete file",
+      })
+    }
+  },
+
+  deleteStoredFolder: async (id) => {
+    try {
+      const state = get()
+      const folderTreeIDs = collectFolderTreeIDs(state.folders, id)
+      const clearCurrentWorkbook = Boolean(
+        state.workbook &&
+          state.files.some(
+            (file) =>
+              file.id === state.workbook?.id && folderTreeIDs.has(file.folderId)
+          )
+      )
+
+      await removeFolder(id)
+      set({
+        workbook: clearCurrentWorkbook ? null : state.workbook,
+        sheet: clearCurrentWorkbook ? null : state.sheet,
+        activeWorkspaceTab: clearCurrentWorkbook
+          ? ""
+          : state.activeWorkspaceTab,
+        fileSettings: clearCurrentWorkbook
+          ? DEFAULT_FILE_SETTINGS
+          : state.fileSettings,
+        kanbanRegions: clearCurrentWorkbook ? [] : state.kanbanRegions,
+      })
+      await Promise.all([get().refreshFiles(), get().refreshRecentFiles()])
+    } catch (error) {
+      set({
+        error:
+          error instanceof Error ? error.message : "Failed to delete folder",
       })
     }
   },
@@ -3667,6 +3787,7 @@ export function resetSheetStore() {
     workbook: null,
     sheet: null,
     files: [],
+    folders: [],
     recentFiles: [],
     selectedSheetName: "",
     activeWorkspaceTab: "",

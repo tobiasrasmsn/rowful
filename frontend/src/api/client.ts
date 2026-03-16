@@ -3,6 +3,7 @@ import type {
   EmailProfileInput,
   EmailProfileResponse,
   EmailProfilesResponse,
+  FolderEntry,
   FileSettings,
   FileSettingsResponse,
   FilesResponse,
@@ -24,6 +25,7 @@ import type {
   AuthBootstrap,
   AuthSessionResponse,
 } from "@/types/auth"
+import type { SnapshotStatusResponse } from "@/types/snapshot"
 import { getCSRFToken, handleUnauthorized } from "@/lib/authSession"
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "")
@@ -102,9 +104,15 @@ async function parseJson<T>(response: Response): Promise<T> {
   return payload as T
 }
 
-export async function uploadWorkbook(file: File): Promise<UploadResponse> {
+export async function uploadWorkbook(
+  file: File,
+  folderId?: string
+): Promise<UploadResponse> {
   const formData = new FormData()
   formData.append("file", file)
+  if (folderId) {
+    formData.append("folderId", folderId)
+  }
 
   const response = await apiFetch(`${API_BASE_URL}/api/upload`, {
     method: "POST",
@@ -473,6 +481,7 @@ export async function listFiles(): Promise<FilesResponse> {
 
 export async function createWorkbook(payload?: {
   name?: string
+  folderId?: string
 }): Promise<UploadResponse> {
   const response = await apiFetch(`${API_BASE_URL}/api/files`, {
     method: "POST",
@@ -536,6 +545,72 @@ export async function removeFile(fileId: string): Promise<{ status: string }> {
   const response = await apiFetch(`${API_BASE_URL}/api/files/${fileId}`, {
     method: "DELETE",
   })
+  return parseJson<{ status: string }>(response)
+}
+
+export async function moveFile(
+  fileId: string,
+  payload: { folderId?: string }
+): Promise<{ status: string }> {
+  const response = await apiFetch(`${API_BASE_URL}/api/files/${fileId}/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  return parseJson<{ status: string }>(response)
+}
+
+export async function createFolder(payload: {
+  name: string
+  parentId?: string
+}): Promise<FolderEntry> {
+  const response = await apiFetch(`${API_BASE_URL}/api/files/folders`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  return parseJson<FolderEntry>(response)
+}
+
+export async function renameFolder(
+  folderId: string,
+  payload: { name: string }
+): Promise<FolderEntry> {
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/files/folders/${folderId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+  return parseJson<FolderEntry>(response)
+}
+
+export async function moveFolder(
+  folderId: string,
+  payload: { parentId?: string }
+): Promise<FolderEntry> {
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/files/folders/${folderId}/move`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+  return parseJson<FolderEntry>(response)
+}
+
+export async function removeFolder(
+  folderId: string
+): Promise<{ status: string }> {
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/files/folders/${folderId}`,
+    {
+      method: "DELETE",
+    }
+  )
   return parseJson<{ status: string }>(response)
 }
 
@@ -786,4 +861,48 @@ export async function deleteAllowlistEntry(
     { method: "DELETE" }
   )
   return parseJson<{ status: string }>(response)
+}
+
+export async function fetchSnapshotStatus(): Promise<SnapshotStatusResponse> {
+  const response = await apiFetch(`${API_BASE_URL}/api/admin/snapshots`)
+  return parseJson<SnapshotStatusResponse>(response)
+}
+
+export async function updateSnapshotSettings(payload: {
+  enabled: boolean
+  endpoint: string
+  region: string
+  bucket: string
+  prefix: string
+  accessKeyId: string
+  secretAccessKey: string
+  clearSecretAccessKey: boolean
+  usePathStyle: boolean
+  scheduleIntervalHours: number
+  retentionCount: number
+}): Promise<SnapshotStatusResponse> {
+  const response = await apiFetch(`${API_BASE_URL}/api/admin/snapshots`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  return parseJson<SnapshotStatusResponse>(response)
+}
+
+export async function runSnapshotNow(): Promise<SnapshotStatusResponse> {
+  const response = await apiFetch(`${API_BASE_URL}/api/admin/snapshots/run`, {
+    method: "POST",
+  })
+  return parseJson<SnapshotStatusResponse>(response)
+}
+
+export async function restoreSnapshotRun(
+  runId: string
+): Promise<SnapshotStatusResponse> {
+  const response = await apiFetch(`${API_BASE_URL}/api/admin/snapshots/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ runId }),
+  })
+  return parseJson<SnapshotStatusResponse>(response)
 }

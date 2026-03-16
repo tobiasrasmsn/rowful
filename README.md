@@ -14,6 +14,7 @@ It lets you import `.xlsx` workbooks, edit them in the browser, organize spreads
 - Save reusable SMTP profiles
 - Send templated emails from spreadsheet data
 - Manage custom domains through Caddy
+- Push scheduled snapshots to S3-compatible object storage
 - Run everything as a self-hosted Docker deployment
 
 ## Stack
@@ -134,6 +135,7 @@ Unsupported formulas from imported files may still be preserved, but they are no
 - DNS verification against configured public IPs
 - Caddy config generation for managed domains
 - Caddy reload through the admin API
+- Snapshot backups to S3-compatible storage such as AWS S3 or Cloudflare R2
 - HTTPS-ready self-hosted deployment flow
 
 ## Production Setup
@@ -191,6 +193,23 @@ Persistent data is stored in:
 - `./data`
 - `./caddy/data`
 - `./caddy/config`
+
+## Snapshot Backups
+
+Admins can configure object storage snapshots from the admin page.
+
+- Supports S3-compatible providers such as AWS S3, Cloudflare R2, and MinIO
+- Packages a consistent SQLite copy plus the app data roots visible to the backend
+- Uploads a compressed snapshot archive directly from the backend service
+- Prunes older remote snapshots based on the retention count you set
+
+The scheduler runs inside the backend process instead of relying on system cron.
+That means the same automatic snapshot flow works for:
+
+- the Ubuntu/Debian VPS path installed via [install.sh](/Users/tobiasrasmussen/Desktop/Rasmussen Solutions/Projects/planarv1/install.sh)
+- container-first VPS deployments using [docker-compose.platform.yml](/Users/tobiasrasmussen/Desktop/Rasmussen Solutions/Projects/planarv1/docker-compose.platform.yml)
+
+If the app is restarted while a snapshot is due, the backend checks the saved schedule on boot and catches up automatically.
 
 ## Local Development
 

@@ -34,6 +34,26 @@ type storedCell struct {
 }
 
 func New(path string, appEncryptionKey string) (*Store, error) {
+	db, err := openSQLiteDatabase(path)
+	if err != nil {
+		return nil, err
+	}
+
+	secrets, err := newSecretCodec(appEncryptionKey)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+
+	store := &Store{db: db, secrets: secrets}
+	if err := store.migrate(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return store, nil
+}
+
+func openSQLiteDatabase(path string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -51,19 +71,7 @@ func New(path string, appEncryptionKey string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("set busy timeout: %w", err)
 	}
-
-	secrets, err := newSecretCodec(appEncryptionKey)
-	if err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-
-	store := &Store{db: db, secrets: secrets}
-	if err := store.migrate(); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	return store, nil
+	return db, nil
 }
 
 func (s *Store) migrate() error {
@@ -73,6 +81,7 @@ CREATE TABLE IF NOT EXISTS workbooks (
   file_name TEXT NOT NULL,
   file_hash TEXT NOT NULL UNIQUE,
   file_path TEXT NOT NULL DEFAULT '',
+  folder_id TEXT NOT NULL DEFAULT '',
   active_sheet TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT '',
@@ -137,8 +146,31 @@ CREATE TABLE IF NOT EXISTS managed_domains (
 	if err := s.migrateAuthTables(); err != nil {
 		return err
 	}
+	if err := s.migrateSnapshotTables(); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`
+CREATE TABLE IF NOT EXISTS workbook_folders (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  parent_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES workbook_folders(id) ON DELETE CASCADE
+)
+`); err != nil {
+		return fmt.Errorf("create workbook folders schema: %w", err)
+	}
+	if err := s.migrateWorkbookFoldersParentIDNullable(); err != nil {
+		return err
+	}
 
 	if err := s.ensureWorkbookColumn("file_path", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureWorkbookColumn("folder_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	if err := s.ensureWorkbookColumn("updated_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
@@ -187,6 +219,15 @@ CREATE TABLE IF NOT EXISTS managed_domains (
 	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_workbook_kanban_regions_workbook_id ON workbook_kanban_regions(workbook_id);`); err != nil {
 		return fmt.Errorf("create index on workbook_kanban_regions.workbook_id: %w", err)
 	}
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_workbook_folders_user_id ON workbook_folders(user_id);`); err != nil {
+		return fmt.Errorf("create index on workbook_folders.user_id: %w", err)
+	}
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_workbook_folders_parent_id ON workbook_folders(parent_id);`); err != nil {
+		return fmt.Errorf("create index on workbook_folders.parent_id: %w", err)
+	}
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_workbooks_folder_id ON workbooks(folder_id);`); err != nil {
+		return fmt.Errorf("create index on workbooks.folder_id: %w", err)
+	}
 	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_managed_domains_created_at ON managed_domains(created_at);`); err != nil {
 		return fmt.Errorf("create index on managed_domains.created_at: %w", err)
 	}
@@ -222,6 +263,83 @@ func (s *Store) ensureFileSettingsColumn(name, ddl string) error {
 	return ensureTableColumn(s.db, "file_settings", name, ddl)
 }
 
+func (s *Store) migrateWorkbookFoldersParentIDNullable() error {
+	rows, err := s.db.Query(`PRAGMA table_info(workbook_folders)`)
+	if err != nil {
+		return fmt.Errorf("inspect workbook_folders schema: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	needsMigration := false
+	for rows.Next() {
+		var cid int
+		var colName, colType string
+		var notNull int
+		var dflt sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &colName, &colType, &notNull, &dflt, &pk); err != nil {
+			return fmt.Errorf("scan workbook_folders schema row: %w", err)
+		}
+		if !strings.EqualFold(colName, "parent_id") {
+			continue
+		}
+
+		defaultValue := strings.TrimSpace(strings.ToUpper(dflt.String))
+		needsMigration = notNull != 0 || (dflt.Valid && defaultValue != "NULL")
+		break
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate workbook_folders schema: %w", err)
+	}
+	if !needsMigration {
+		return nil
+	}
+
+	if _, err := s.db.Exec(`PRAGMA foreign_keys = OFF;`); err != nil {
+		return fmt.Errorf("disable foreign keys for workbook_folders migration: %w", err)
+	}
+	defer func() {
+		_, _ = s.db.Exec(`PRAGMA foreign_keys = ON;`)
+	}()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin workbook_folders migration tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(`
+CREATE TABLE workbook_folders_new (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  parent_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES workbook_folders_new(id) ON DELETE CASCADE
+)`); err != nil {
+		return fmt.Errorf("create migrated workbook_folders table: %w", err)
+	}
+	if _, err := tx.Exec(`
+INSERT INTO workbook_folders_new(id, user_id, name, parent_id, created_at, updated_at)
+SELECT id, user_id, name, NULLIF(parent_id, ''), created_at, updated_at
+FROM workbook_folders
+`); err != nil {
+		return fmt.Errorf("copy workbook_folders rows: %w", err)
+	}
+	if _, err := tx.Exec(`DROP TABLE workbook_folders`); err != nil {
+		return fmt.Errorf("drop old workbook_folders table: %w", err)
+	}
+	if _, err := tx.Exec(`ALTER TABLE workbook_folders_new RENAME TO workbook_folders`); err != nil {
+		return fmt.Errorf("rename migrated workbook_folders table: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit workbook_folders migration: %w", err)
+	}
+	return nil
+}
+
 func ensureTableColumn(db *sql.DB, tableName, name, ddl string) error {
 	rows, err := db.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, tableName))
 	if err != nil {
@@ -253,6 +371,22 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+func (s *Store) Reopen(path string) error {
+	db, err := openSQLiteDatabase(path)
+	if err != nil {
+		return err
+	}
+
+	nextStore := &Store{db: db, secrets: s.secrets}
+	if err := nextStore.migrate(); err != nil {
+		_ = db.Close()
+		return err
+	}
+
+	s.db = db
+	return nil
+}
+
 func decodeKanbanRegions(raw string) ([]models.KanbanRegion, error) {
 	if strings.TrimSpace(raw) == "" {
 		return []models.KanbanRegion{}, nil
@@ -278,7 +412,7 @@ func encodeKanbanRegions(regions []models.KanbanRegion) (string, error) {
 	return string(encoded), nil
 }
 
-func (s *Store) SaveWorkbook(userID string, workbook models.Workbook, sheets map[string]models.Sheet, filePath string) error {
+func (s *Store) SaveWorkbook(userID string, workbook models.Workbook, sheets map[string]models.Sheet, folderID string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	created := workbook.CreatedAt.UTC().Format(time.RFC3339Nano)
 	if workbook.CreatedAt.IsZero() {
@@ -291,17 +425,26 @@ func (s *Store) SaveWorkbook(userID string, workbook models.Workbook, sheets map
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := s.ensureFolderAccessTx(tx, userID, folderID); err != nil {
+		return err
+	}
+	filePath, err := s.getFolderPathTx(tx, userID, folderID)
+	if err != nil {
+		return err
+	}
+
 	_, err = tx.Exec(`
-INSERT INTO workbooks(id, file_name, file_hash, file_path, active_sheet, created_at, updated_at, last_opened_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO workbooks(id, file_name, file_hash, file_path, folder_id, active_sheet, created_at, updated_at, last_opened_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   file_name=excluded.file_name,
   file_hash=excluded.file_hash,
   file_path=excluded.file_path,
+  folder_id=excluded.folder_id,
   active_sheet=excluded.active_sheet,
   updated_at=excluded.updated_at,
   last_opened_at=excluded.last_opened_at
-`, workbook.ID, workbook.FileName, workbook.FileHash, filePath, workbook.ActiveSheet, created, now, now)
+`, workbook.ID, workbook.FileName, workbook.FileHash, filePath, folderID, workbook.ActiveSheet, created, now, now)
 	if err != nil {
 		return fmt.Errorf("upsert workbook: %w", err)
 	}
@@ -907,7 +1050,7 @@ func (s *Store) deleteKanbanSheetTx(tx *sql.Tx, workbookID, sheetName string) er
 
 func (s *Store) ListFiles(limit int) ([]models.FileEntry, error) {
 	query := `
-SELECT id, file_name, file_path, file_hash, created_at, updated_at, last_opened_at
+SELECT id, file_name, file_path, folder_id, file_hash, created_at, updated_at, last_opened_at
 FROM workbooks
 ORDER BY updated_at DESC
 `
@@ -927,7 +1070,7 @@ ORDER BY updated_at DESC
 	for rows.Next() {
 		var e models.FileEntry
 		var createdAt, updatedAt, lastOpenedAt string
-		if err := rows.Scan(&e.ID, &e.FileName, &e.FilePath, &e.FileHash, &createdAt, &updatedAt, &lastOpenedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.FileName, &e.FilePath, &e.FolderID, &e.FileHash, &createdAt, &updatedAt, &lastOpenedAt); err != nil {
 			return nil, fmt.Errorf("scan file entry: %w", err)
 		}
 		e.CreatedAt = parseTimeOrNow(createdAt)
@@ -943,7 +1086,7 @@ ORDER BY updated_at DESC
 
 func (s *Store) ListRecentFiles(limit int) ([]models.FileEntry, error) {
 	query := `
-SELECT id, file_name, file_path, file_hash, created_at, updated_at, last_opened_at
+SELECT id, file_name, file_path, folder_id, file_hash, created_at, updated_at, last_opened_at
 FROM workbooks
 ORDER BY last_opened_at DESC
 `
@@ -963,7 +1106,7 @@ ORDER BY last_opened_at DESC
 	for rows.Next() {
 		var e models.FileEntry
 		var createdAt, updatedAt, lastOpenedAt string
-		if err := rows.Scan(&e.ID, &e.FileName, &e.FilePath, &e.FileHash, &createdAt, &updatedAt, &lastOpenedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.FileName, &e.FilePath, &e.FolderID, &e.FileHash, &createdAt, &updatedAt, &lastOpenedAt); err != nil {
 			return nil, fmt.Errorf("scan recent file: %w", err)
 		}
 		e.CreatedAt = parseTimeOrNow(createdAt)

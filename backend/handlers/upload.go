@@ -40,6 +40,7 @@ func (h UploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid multipart form"})
 		return
 	}
+	folderID := strings.TrimSpace(r.FormValue("folderId"))
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
@@ -122,7 +123,15 @@ func (h UploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	id := uuid.NewString()
 	workbookMeta := cache.BuildWorkbookMeta(id, header.Filename, fileHash, sheets)
 
-	if err := h.storage.SaveWorkbook(user.ID, workbookMeta, sheets, ""); err != nil {
+	if err := h.storage.SaveWorkbook(user.ID, workbookMeta, sheets, folderID); err != nil {
+		if err == storage.ErrNotFound {
+			writeJSON(w, http.StatusNotFound, models.ErrorResponse{Error: "folder not found"})
+			return
+		}
+		if err == storage.ErrInvalid {
+			writeJSON(w, http.StatusBadRequest, models.ErrorResponse{Error: "invalid folder"})
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, models.ErrorResponse{Error: "failed to persist workbook"})
 		return
 	}
@@ -145,4 +154,8 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func WriteJSON(w http.ResponseWriter, status int, payload any) {
+	writeJSON(w, status, payload)
 }

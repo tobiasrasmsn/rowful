@@ -28,6 +28,8 @@ const (
 	maximumPasswordBytes  = 72
 )
 
+var errInvalidCSRFToken = errors.New("invalid CSRF token")
+
 type authContextKey string
 
 const (
@@ -199,17 +201,15 @@ func (h AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 func (h AuthHandler) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, user, err := h.authenticateRequest(r)
+		session, user, err := h.authorizeRequest(r)
 		if err != nil {
+			if errors.Is(err, errInvalidCSRFToken) {
+				writeJSON(w, http.StatusForbidden, models.ErrorResponse{Error: err.Error()})
+				return
+			}
 			clearSessionCookie(w, r)
 			writeJSON(w, http.StatusUnauthorized, models.ErrorResponse{Error: "authentication required"})
 			return
-		}
-		if requiresCSRFFCheck(r.Method) {
-			if subtleCompare(strings.TrimSpace(r.Header.Get("X-CSRF-Token")), session.CSRFToken) == 0 {
-				writeJSON(w, http.StatusForbidden, models.ErrorResponse{Error: "invalid CSRF token"})
-				return
-			}
 		}
 		ctx := context.WithValue(r.Context(), userContextKey, user)
 		ctx = context.WithValue(ctx, sessionContextKey, session)
@@ -335,12 +335,42 @@ func (h AuthHandler) sessionResponse(r *http.Request) (models.AuthSessionRespons
 	}, false
 }
 
+func (h AuthHandler) AuthorizeAdminRequest(r *http.Request) (*http.Request, int, bool, error) {
+	session, user, err := h.authorizeRequest(r)
+	if err != nil {
+		if errors.Is(err, errInvalidCSRFToken) {
+			return r, http.StatusForbidden, false, err
+		}
+		return r, http.StatusUnauthorized, true, err
+	}
+	if !user.IsAdmin {
+		return r, http.StatusForbidden, false, errors.New("admin access required")
+	}
+
+	ctx := context.WithValue(r.Context(), userContextKey, user)
+	ctx = context.WithValue(ctx, sessionContextKey, session)
+	return r.WithContext(ctx), http.StatusOK, false, nil
+}
+
 func (h AuthHandler) authenticateRequest(r *http.Request) (models.AuthSession, models.AuthUser, error) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
 		return models.AuthSession{}, models.AuthUser{}, err
 	}
 	return h.storage.GetSessionByTokenHash(hashSessionToken(cookie.Value))
+}
+
+func (h AuthHandler) authorizeRequest(r *http.Request) (models.AuthSession, models.AuthUser, error) {
+	session, user, err := h.authenticateRequest(r)
+	if err != nil {
+		return models.AuthSession{}, models.AuthUser{}, err
+	}
+	if requiresCSRFFCheck(r.Method) {
+		if subtleCompare(strings.TrimSpace(r.Header.Get("X-CSRF-Token")), session.CSRFToken) == 0 {
+			return models.AuthSession{}, models.AuthUser{}, errInvalidCSRFToken
+		}
+	}
+	return session, user, nil
 }
 
 func validateSignupRequest(req signupRequest) error {
@@ -409,6 +439,10 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 		Expires:  time.Unix(0, 0),
 		MaxAge:   -1,
 	})
+}
+
+func ClearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	clearSessionCookie(w, r)
 }
 
 func isSecureRequest(r *http.Request) bool {

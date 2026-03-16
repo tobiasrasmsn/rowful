@@ -535,7 +535,7 @@ WHERE wu.user_id = ? AND w.file_hash = ?
 
 func (s *Store) ListFilesForUser(userID string, limit int) ([]models.FileEntry, error) {
 	query := `
-SELECT w.id, w.file_name, w.file_path, w.file_hash, w.created_at, w.updated_at, w.last_opened_at
+SELECT w.id, w.file_name, w.file_path, w.folder_id, w.file_hash, w.created_at, w.updated_at, w.last_opened_at
 FROM workbooks w
 JOIN workbook_users wu ON wu.workbook_id = w.id
 WHERE wu.user_id = ?
@@ -551,7 +551,7 @@ ORDER BY w.updated_at DESC
 
 func (s *Store) ListRecentFilesForUser(userID string, limit int) ([]models.FileEntry, error) {
 	query := `
-SELECT w.id, w.file_name, w.file_path, w.file_hash, w.created_at, w.updated_at, w.last_opened_at
+SELECT w.id, w.file_name, w.file_path, w.folder_id, w.file_hash, w.created_at, w.updated_at, w.last_opened_at
 FROM workbooks w
 JOIN workbook_users wu ON wu.workbook_id = w.id
 WHERE wu.user_id = ?
@@ -576,7 +576,7 @@ func (s *Store) queryFileEntries(query string, args ...any) ([]models.FileEntry,
 	for rows.Next() {
 		var entry models.FileEntry
 		var createdAt, updatedAt, lastOpenedAt string
-		if err := rows.Scan(&entry.ID, &entry.FileName, &entry.FilePath, &entry.FileHash, &createdAt, &updatedAt, &lastOpenedAt); err != nil {
+		if err := rows.Scan(&entry.ID, &entry.FileName, &entry.FilePath, &entry.FolderID, &entry.FileHash, &createdAt, &updatedAt, &lastOpenedAt); err != nil {
 			return nil, fmt.Errorf("scan file entry: %w", err)
 		}
 		entry.CreatedAt = parseTimeOrNow(createdAt)
