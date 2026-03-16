@@ -209,6 +209,17 @@ func (s *Service) ApplySchedule(settings models.SnapshotSettings) error {
 	return s.store.UpdateSnapshotSchedule(&nextRun)
 }
 
+func (s *Service) PreviewNextRun(settings models.SnapshotSettings) *time.Time {
+	if settings.NextRunAt != nil {
+		return settings.NextRunAt
+	}
+	if !settings.Enabled || !snapshotSettingsConfigured(settings) || settings.ScheduleIntervalHours <= 0 {
+		return nil
+	}
+	nextRun := time.Now().UTC().Add(time.Duration(settings.ScheduleIntervalHours) * time.Hour)
+	return &nextRun
+}
+
 func (s *Service) execute(ctx context.Context, run models.SnapshotRun, settings models.SnapshotSettings) {
 	s.gate.RLock()
 	defer s.gate.RUnlock()
@@ -680,4 +691,10 @@ func isSubpath(child, parent string) bool {
 
 func sqliteStringLiteral(path string) string {
 	return "'" + strings.ReplaceAll(path, "'", "''") + "'"
+}
+
+func snapshotSettingsConfigured(settings models.SnapshotSettings) bool {
+	return strings.TrimSpace(settings.Bucket) != "" &&
+		strings.TrimSpace(settings.AccessKeyID) != "" &&
+		(settings.HasSecretAccessKey || strings.TrimSpace(settings.SecretAccessKey) != "")
 }

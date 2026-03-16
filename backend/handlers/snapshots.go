@@ -153,6 +153,7 @@ func (h SnapshotsHandler) buildResponse() (models.SnapshotStatusResponse, error)
 	if err != nil {
 		return models.SnapshotStatusResponse{}, err
 	}
+	settings.NextRunAt = h.service.PreviewNextRun(settings)
 	settings.SecretAccessKey = ""
 
 	runs, err := h.storage.ListSnapshotRuns(10)

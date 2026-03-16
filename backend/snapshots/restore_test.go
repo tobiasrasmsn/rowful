@@ -75,6 +75,23 @@ func TestRestoreReplacesDatabaseAndUploads(t *testing.T) {
 	}
 	build.cleanup()
 
+	currentSettings, err := store.UpdateSnapshotSettings(models.SnapshotSettings{
+		Enabled:               true,
+		Bucket:                "rowful-live-backups",
+		AccessKeyID:           "live-access-key",
+		SecretAccessKey:       "secret-key",
+		HasSecretAccessKey:    true,
+		Prefix:                "current",
+		ScheduleIntervalHours: 12,
+		RetentionCount:        21,
+	})
+	if err != nil {
+		t.Fatalf("update current snapshot settings: %v", err)
+	}
+	if err := service.ApplySchedule(currentSettings); err != nil {
+		t.Fatalf("seed current snapshot schedule: %v", err)
+	}
+
 	if _, err := store.UpdateSignupPolicy(true, false); err != nil {
 		t.Fatalf("enable signups for mutation: %v", err)
 	}
@@ -168,6 +185,20 @@ func TestRestoreReplacesDatabaseAndUploads(t *testing.T) {
 		if restoredRun.ID == runningRun.ID {
 			t.Fatalf("expected stale in-progress run metadata to be removed during restore")
 		}
+	}
+
+	restoredSettings, err := store.GetSnapshotSettings()
+	if err != nil {
+		t.Fatalf("load restored snapshot settings: %v", err)
+	}
+	if restoredSettings.Prefix != currentSettings.Prefix {
+		t.Fatalf("expected current snapshot prefix %q, got %q", currentSettings.Prefix, restoredSettings.Prefix)
+	}
+	if restoredSettings.ScheduleIntervalHours != currentSettings.ScheduleIntervalHours {
+		t.Fatalf("expected current snapshot interval %d, got %d", currentSettings.ScheduleIntervalHours, restoredSettings.ScheduleIntervalHours)
+	}
+	if restoredSettings.NextRunAt == nil {
+		t.Fatalf("expected current snapshot schedule to remain populated after restore")
 	}
 }
 

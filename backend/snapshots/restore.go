@@ -26,6 +26,7 @@ type restorePlan struct {
 	backupPath string
 	present    bool
 	isDir      bool
+	rootIsDir  bool
 }
 
 func (s *Service) Restore(ctx context.Context, runID string) error {
@@ -60,6 +61,10 @@ func (s *Service) Restore(ctx context.Context, runID string) error {
 	currentRuns, err := s.store.ListSnapshotRuns(50)
 	if err != nil {
 		return fmt.Errorf("load current snapshot history before restore: %w", err)
+	}
+	currentSettings, err := s.store.GetSnapshotSettings()
+	if err != nil {
+		return fmt.Errorf("load current snapshot settings before restore: %w", err)
 	}
 
 	settings, err := s.store.GetSnapshotSettings()
@@ -103,6 +108,9 @@ func (s *Service) Restore(ctx context.Context, runID string) error {
 		return err
 	}
 
+	if err := s.store.ReplaceSnapshotSettings(currentSettings); err != nil {
+		return fmt.Errorf("restore snapshot settings: %w", err)
+	}
 	if err := s.store.ReplaceSnapshotRuns(currentRuns); err != nil {
 		return fmt.Errorf("restore snapshot run history: %w", err)
 	}
@@ -111,9 +119,8 @@ func (s *Service) Restore(ctx context.Context, runID string) error {
 		s.cache.Clear()
 	}
 
-	restoredSettings, err := s.store.GetSnapshotSettings()
-	if err == nil {
-		_ = s.ApplySchedule(restoredSettings)
+	if currentSettings.Enabled && snapshotSettingsConfigured(currentSettings) && currentSettings.NextRunAt == nil {
+		_ = s.ApplySchedule(currentSettings)
 	}
 
 	return nil
@@ -180,6 +187,7 @@ func (s *Service) prepareRestorePlans(archivePath string) ([]restorePlan, error)
 			backupPath: backupPath,
 			present:    present,
 			isDir:      isDir,
+			rootIsDir:  rootPathIsDirectory(root.Path, isDir),
 		})
 	}
 
@@ -209,11 +217,24 @@ func (s *Service) applyRestore(plans []restorePlan) error {
 
 	rollback := func(restoreErr error) error {
 		for _, plan := range promoted {
-			_ = os.RemoveAll(plan.root.Path)
+			if plan.rootIsDir {
+				_ = clearDirectoryContents(plan.root.Path)
+			} else {
+				_ = os.RemoveAll(plan.root.Path)
+			}
 		}
 		for index := len(backedUp) - 1; index >= 0; index-- {
 			plan := backedUp[index]
-			if err := os.Rename(plan.backupPath, plan.root.Path); err != nil {
+			var err error
+			if plan.rootIsDir {
+				err = moveDirectoryContents(plan.backupPath, plan.root.Path)
+				if err == nil {
+					err = os.RemoveAll(plan.backupPath)
+				}
+			} else {
+				err = os.Rename(plan.backupPath, plan.root.Path)
+			}
+			if err != nil {
 				restoreErr = fmt.Errorf("%w (rollback failed for %s: %v)", restoreErr, plan.root.Path, err)
 			}
 		}
@@ -230,7 +251,11 @@ func (s *Service) applyRestore(plans []restorePlan) error {
 		}
 
 		if _, err := os.Stat(plan.root.Path); err == nil {
-			if err := os.Rename(plan.root.Path, plan.backupPath); err != nil {
+			if plan.rootIsDir {
+				if err := moveDirectoryContents(plan.root.Path, plan.backupPath); err != nil {
+					return rollback(fmt.Errorf("move live data aside for %s: %w", plan.root.Path, err))
+				}
+			} else if err := os.Rename(plan.root.Path, plan.backupPath); err != nil {
 				return rollback(fmt.Errorf("move live data aside for %s: %w", plan.root.Path, err))
 			}
 			backedUp = append(backedUp, plan)
@@ -248,7 +273,16 @@ func (s *Service) applyRestore(plans []restorePlan) error {
 		if !plan.present {
 			continue
 		}
-		if err := os.Rename(plan.stagePath, plan.root.Path); err != nil {
+		var err error
+		if plan.rootIsDir {
+			err = moveDirectoryContents(plan.stagePath, plan.root.Path)
+			if err == nil {
+				err = os.RemoveAll(plan.stagePath)
+			}
+		} else {
+			err = os.Rename(plan.stagePath, plan.root.Path)
+		}
+		if err != nil {
 			return rollback(fmt.Errorf("restore snapshot data for %s: %w", plan.root.Path, err))
 		}
 		promoted = append(promoted, plan)
@@ -262,6 +296,54 @@ func (s *Service) applyRestore(plans []restorePlan) error {
 		_ = os.RemoveAll(plan.backupPath)
 	}
 	cleanupStages()
+	return nil
+}
+
+func rootPathIsDirectory(rootPath string, stagedAsDirectory bool) bool {
+	info, err := os.Stat(rootPath)
+	if err == nil {
+		return info.IsDir()
+	}
+	return stagedAsDirectory
+}
+
+func moveDirectoryContents(sourceDir, targetDir string) error {
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return fmt.Errorf("create directory %s: %w", targetDir, err)
+	}
+
+	entries, err := os.ReadDir(sourceDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read directory %s: %w", sourceDir, err)
+	}
+
+	for _, entry := range entries {
+		sourcePath := filepath.Join(sourceDir, entry.Name())
+		targetPath := filepath.Join(targetDir, entry.Name())
+		_ = os.RemoveAll(targetPath)
+		if err := os.Rename(sourcePath, targetPath); err != nil {
+			return fmt.Errorf("move %s to %s: %w", sourcePath, targetPath, err)
+		}
+	}
+	return nil
+}
+
+func clearDirectoryContents(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

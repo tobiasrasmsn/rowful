@@ -207,6 +207,52 @@ WHERE id = 1
 	return nil
 }
 
+func (s *Store) ReplaceSnapshotSettings(settings models.SnapshotSettings) error {
+	normalized := normalizeSnapshotSettings(settings)
+
+	encryptedSecret := ""
+	if strings.TrimSpace(normalized.SecretAccessKey) != "" {
+		encrypted, err := s.secrets.encryptString(normalized.SecretAccessKey)
+		if err != nil {
+			return fmt.Errorf("encrypt snapshot secret: %w", err)
+		}
+		encryptedSecret = encrypted
+	}
+
+	updatedAt := normalized.UpdatedAt.UTC()
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+
+	if _, err := s.db.Exec(`
+UPDATE snapshot_settings
+SET enabled = ?, endpoint = ?, region = ?, bucket = ?, prefix = ?, access_key_id = ?,
+    secret_access_key_encrypted = ?, use_path_style = ?, schedule_interval_hours = ?,
+    retention_count = ?, last_snapshot_at = ?, last_success_at = ?, next_run_at = ?,
+    last_error = ?, updated_at = ?
+WHERE id = 1
+`,
+		boolToInt(normalized.Enabled),
+		normalized.Endpoint,
+		normalized.Region,
+		normalized.Bucket,
+		normalized.Prefix,
+		normalized.AccessKeyID,
+		encryptedSecret,
+		boolToInt(normalized.UsePathStyle),
+		normalized.ScheduleIntervalHours,
+		normalized.RetentionCount,
+		formatOptionalTime(normalized.LastSnapshotAt),
+		formatOptionalTime(normalized.LastSuccessAt),
+		formatOptionalTime(normalized.NextRunAt),
+		strings.TrimSpace(normalized.LastError),
+		updatedAt.Format(time.RFC3339Nano),
+	); err != nil {
+		return fmt.Errorf("replace snapshot settings: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) CreateSnapshotRun(trigger string) (models.SnapshotRun, error) {
 	run := models.SnapshotRun{
 		ID:        uuid.NewString(),
@@ -473,4 +519,11 @@ func parseOptionalTime(value string) *time.Time {
 	}
 	parsed := parseTimeOrNow(trimmed)
 	return &parsed
+}
+
+func formatOptionalTime(value *time.Time) string {
+	if value == nil {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339Nano)
 }
